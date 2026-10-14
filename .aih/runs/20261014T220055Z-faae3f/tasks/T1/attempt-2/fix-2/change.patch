@@ -1,0 +1,3439 @@
+diff --git a/caddytest/integration/caddyfile_adapt/reverse_proxy_stream_detached.caddyfiletest b/caddytest/integration/caddyfile_adapt/reverse_proxy_stream_detached.caddyfiletest
+new file mode 100644
+index 00000000..9c7e7005
+--- /dev/null
++++ b/caddytest/integration/caddyfile_adapt/reverse_proxy_stream_detached.caddyfiletest
+@@ -0,0 +1,42 @@
++:80 {
++	reverse_proxy localhost:54321 {
++		stream_detached
++		stream_logs {
++			skip_handshake
++			level INFO
++		}
++	}
++}
++----------
++{
++	"apps": {
++		"http": {
++			"servers": {
++				"srv0": {
++					"listen": [
++						":80"
++					],
++					"routes": [
++						{
++							"handle": [
++								{
++									"handler": "reverse_proxy",
++									"stream_detached": true,
++									"stream_logs": {
++										"level": "info",
++										"skip_handshake": true
++									},
++									"upstreams": [
++										{
++											"dial": "localhost:54321"
++										}
++									]
++								}
++							]
++						}
++					]
++				}
++			}
++		}
++	}
++}
+diff --git a/caddytest/integration/intercept_test.go b/caddytest/integration/intercept_test.go
+index c1b33b96..1d80f083 100644
+--- a/caddytest/integration/intercept_test.go
++++ b/caddytest/integration/intercept_test.go
+@@ -39,6 +39,46 @@ func TestIntercept(t *testing.T) {
+ 	tester.AssertGetResponse("http://localhost:9080/no-intercept", 200, "I'm not a teapot")
+ }
+ 
++// An upgrade is the final response: handle_response routes that match every
++// response do not get to intercept it.
++func TestInterceptUpgradeThroughReverseProxy(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++	tester.InitServer(streamCaddyfile(1, `intercept {
++		handle_response {
++			respond "intercepted" 200
++		}
++	}
++	reverse_proxy 127.0.0.1:54331`), "caddyfile")
++
++	tn := openTunnel(t, "/ws", "echo")
++	tn.echo(t, "through intercept")
++	tn.echo(t, "and again")
++
++	// the same with a WebSocket handshake
++	ws := openTunnel(t, "/ws", "websocket",
++		"Sec-WebSocket-Version: 13",
++		"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==")
++	ws.echo(t, "websocket through intercept")
++}
++
++// The same with the interception done by the reverse proxy's own handle_response.
++func TestReverseProxyHandleResponseUpgrade(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++	tester.InitServer(streamCaddyfile(1, `reverse_proxy 127.0.0.1:54331 {
++		@upgraded status 101
++		handle_response @upgraded {
++			copy_response
++		}
++		stream_detached
++	}`), "caddyfile")
++
++	tn := openTunnel(t, "/ws", "echo")
++	tn.echo(t, "through handle_response")
++	tester.AssertGetResponse("http://localhost:9080/plain", 200, "plain response")
++}
++
+ func TestInterceptReplaceStatusWithMatcher(t *testing.T) {
+ 	tester := caddytest.NewTester(t)
+ 	tester.InitServer(`{
+diff --git a/caddytest/integration/stream_reload_test.go b/caddytest/integration/stream_reload_test.go
+new file mode 100644
+index 00000000..4e456992
+--- /dev/null
++++ b/caddytest/integration/stream_reload_test.go
+@@ -0,0 +1,764 @@
++package integration
++
++import (
++	"bufio"
++	"bytes"
++	"crypto/tls"
++	"encoding/json"
++	"fmt"
++	"io"
++	"net"
++	"net/http"
++	"os"
++	"path/filepath"
++	"strings"
++	"sync"
++	"syscall"
++	"testing"
++	"time"
++
++	"golang.org/x/net/http2"
++	"golang.org/x/net/http2/hpack"
++
++	"github.com/caddyserver/caddy/v2/caddytest"
++)
++
++// TestMain makes sure net/http's HTTP/2 server supports extended CONNECT
++// (RFC 8441), which it only does if the process starts with this setting.
++func TestMain(m *testing.M) {
++	const setting = "http2xconnect=1"
++	if godebug := os.Getenv("GODEBUG"); !strings.Contains(godebug, setting) {
++		env := []string{"GODEBUG=" + strings.Trim(godebug+","+setting, ",")}
++		for _, kv := range os.Environ() {
++			if !strings.HasPrefix(kv, "GODEBUG=") {
++				env = append(env, kv)
++			}
++		}
++		// replaces the process where that is supported; elsewhere the
++		// tests that need extended CONNECT are skipped
++		_ = syscall.Exec(os.Args[0], os.Args, env)
++	}
++	os.Exit(m.Run())
++}
++
++const (
++	streamBackendA = "127.0.0.1:54331"
++	streamBackendB = "127.0.0.1:54332"
++	streamWait     = 5 * time.Second
++)
++
++// startUpgradeBackend starts a backend that echoes whatever is sent over an
++// upgraded connection (any Upgrade protocol), and answers plain requests with
++// "plain response".
++func startUpgradeBackend(t *testing.T, addr string) {
++	t.Helper()
++	ln, err := net.Listen("tcp", addr)
++	if err != nil {
++		t.Fatalf("listening on %s: %v", addr, err)
++	}
++	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		upgrade := r.Header.Get("Upgrade")
++		if upgrade == "" {
++			_, _ = io.WriteString(w, "plain response")
++			return
++		}
++		conn, brw, err := http.NewResponseController(w).Hijack()
++		if err != nil {
++			return
++		}
++		defer conn.Close()
++		_, _ = fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: %s\r\n\r\n", upgrade)
++		_, _ = io.Copy(conn, brw.Reader)
++	})}
++	go srv.Serve(ln) //nolint:errcheck
++	// hijacked connections are not closed by this: they end when the proxy closes them
++	t.Cleanup(func() { srv.Close() })
++}
++
++// tunnel is the client side of an upgraded connection.
++type tunnel struct {
++	conn net.Conn
++	br   *bufio.Reader
++}
++
++// openTunnel sends an upgrade request for the given protocol to Caddy's
++// HTTP port and expects the 101 response.
++func openTunnel(t *testing.T, path, protocol string, extraHeaders ...string) *tunnel {
++	t.Helper()
++	conn, err := net.DialTimeout("tcp", "127.0.0.1:9080", streamWait)
++	if err != nil {
++		t.Fatalf("dialing caddy: %v", err)
++	}
++	t.Cleanup(func() { conn.Close() })
++
++	var req strings.Builder
++	fmt.Fprintf(&req, "GET %s HTTP/1.1\r\nHost: localhost:9080\r\nConnection: Upgrade\r\nUpgrade: %s\r\n", path, protocol)
++	for _, h := range extraHeaders {
++		req.WriteString(h + "\r\n")
++	}
++	req.WriteString("\r\n")
++	if _, err := io.WriteString(conn, req.String()); err != nil {
++		t.Fatalf("writing upgrade request: %v", err)
++	}
++
++	br := bufio.NewReader(conn)
++	_ = conn.SetReadDeadline(time.Now().Add(streamWait))
++	resp, err := http.ReadResponse(br, &http.Request{Method: http.MethodGet})
++	if err != nil {
++		t.Fatalf("reading upgrade response: %v", err)
++	}
++	if resp.StatusCode != http.StatusSwitchingProtocols {
++		t.Fatalf("upgrade response status = %d, want 101", resp.StatusCode)
++	}
++	return &tunnel{conn: conn, br: br}
++}
++
++// echo sends msg through the tunnel and expects to get it back.
++func (tn *tunnel) echo(t *testing.T, msg string) {
++	t.Helper()
++	_ = tn.conn.SetDeadline(time.Now().Add(streamWait))
++	if _, err := io.WriteString(tn.conn, msg); err != nil {
++		t.Fatalf("writing %q to the tunnel: %v", msg, err)
++	}
++	got := make([]byte, len(msg))
++	if _, err := io.ReadFull(tn.br, got); err != nil {
++		t.Fatalf("reading %q back from the tunnel: %v", msg, err)
++	}
++	if string(got) != msg {
++		t.Fatalf("tunnel echoed %q, want %q", got, msg)
++	}
++}
++
++// waitClosed waits for the proxy to close the tunnel, and reports how long it took.
++func (tn *tunnel) waitClosed(t *testing.T, within time.Duration) time.Duration {
++	t.Helper()
++	start := time.Now()
++	buf := make([]byte, 64)
++	for {
++		_ = tn.conn.SetReadDeadline(start.Add(within))
++		if _, err := tn.br.Read(buf); err != nil {
++			if ne, ok := err.(net.Error); ok && ne.Timeout() {
++				t.Fatalf("the tunnel was still open after %v", within)
++			}
++			return time.Since(start)
++		}
++	}
++}
++
++// streamCaddyfile returns a Caddyfile with a localhost:9080 site made of body.
++// gen differs between the configs of a test, since an unchanged config
++// is not reloaded.
++func streamCaddyfile(gen int, body string) string {
++	return fmt.Sprintf(`{
++	skip_install_trust
++	admin localhost:2999
++	http_port     9080
++	https_port    9443
++	grace_period  1ns
++}
++
++localhost:9080 {
++	header X-Gen %d
++	%s
++}`, gen, body)
++}
++
++const (
++	routeAdetached = `handle /a* {
++		reverse_proxy 127.0.0.1:54331 {
++			stream_detached
++		}
++	}
++	`
++	routeBdetached = `handle /b* {
++		reverse_proxy 127.0.0.1:54332 {
++			stream_detached
++		}
++	}
++	`
++	routeFallback = `handle {
++		respond "fallback"
++	}`
++)
++
++func TestStreamDetachedSurvivesReload(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++	tester.InitServer(streamCaddyfile(1, routeAdetached+routeFallback), "caddyfile")
++
++	tn := openTunnel(t, "/a", "echo")
++	tn.echo(t, "before reload")
++
++	// reloads that keep the upstream
++	tester.InitServer(streamCaddyfile(2, routeAdetached+routeFallback), "caddyfile")
++	tn.echo(t, "after first reload")
++	tester.InitServer(streamCaddyfile(3, routeAdetached+routeFallback), "caddyfile")
++	tn.echo(t, "after second reload")
++
++	// the upgrade still works for new connections to the reloaded config
++	tn2 := openTunnel(t, "/a", "echo")
++	tn2.echo(t, "new stream")
++
++	// the upstream is removed from the config
++	tester.InitServer(streamCaddyfile(4, routeFallback), "caddyfile")
++	tn.waitClosed(t, streamWait)
++	tn2.waitClosed(t, streamWait)
++}
++
++// An upstream address with a placeholder can't be matched against the new config,
++// but the stream is not closed for that: it is kept while such a handler is live.
++func TestStreamDetachedPlaceholderUpstream(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++	body := `reverse_proxy 127.0.0.1:{http.request.header.X-Port} {
++		stream_detached
++	}`
++	tester.InitServer(streamCaddyfile(1, body), "caddyfile")
++
++	tn := openTunnel(t, "/", "echo", "X-Port: 54331")
++	tn.echo(t, "before reload")
++	tester.InitServer(streamCaddyfile(2, body), "caddyfile")
++	tn.echo(t, "after reload")
++
++	// no such handler in the config anymore
++	tester.InitServer(streamCaddyfile(3, routeFallback), "caddyfile")
++	tn.waitClosed(t, streamWait)
++}
++
++func TestStreamDetachedClosesOnlyRemovedUpstream(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	startUpgradeBackend(t, streamBackendB)
++	tester := caddytest.NewTester(t)
++	tester.InitServer(streamCaddyfile(1, routeAdetached+routeBdetached+routeFallback), "caddyfile")
++
++	a := openTunnel(t, "/a", "echo")
++	b := openTunnel(t, "/b", "echo")
++	a.echo(t, "to a")
++	b.echo(t, "to b")
++
++	// backend A is removed, backend B is retained
++	tester.InitServer(streamCaddyfile(2, routeBdetached+routeFallback), "caddyfile")
++	a.waitClosed(t, streamWait)
++	b.echo(t, "b is still open")
++
++	// and then B is removed too
++	tester.InitServer(streamCaddyfile(3, routeFallback), "caddyfile")
++	b.waitClosed(t, streamWait)
++}
++
++func TestStreamNotDetachedClosedOnReload(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++	body := `reverse_proxy 127.0.0.1:54331`
++	tester.InitServer(streamCaddyfile(1, body), "caddyfile")
++
++	tn := openTunnel(t, "/", "echo")
++	tn.echo(t, "before reload")
++
++	// even though the upstream is retained, the stream goes with the config
++	tester.InitServer(streamCaddyfile(2, body), "caddyfile")
++	tn.waitClosed(t, streamWait)
++
++	// the new config serves new streams
++	openTunnel(t, "/", "echo").echo(t, "new stream")
++}
++
++func TestStreamCloseDelayKeepsStreamUntilDelay(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++	body := `reverse_proxy 127.0.0.1:54331 {
++		stream_close_delay 3s
++	}`
++	tester.InitServer(streamCaddyfile(1, body), "caddyfile")
++
++	tn := openTunnel(t, "/", "echo")
++	tn.echo(t, "before reload")
++
++	start := time.Now()
++	tester.InitServer(streamCaddyfile(2, body), "caddyfile")
++	tn.echo(t, "after reload, within the delay")
++
++	tn.waitClosed(t, 4*streamWait)
++	if elapsed := time.Since(start); elapsed < 2*time.Second {
++		t.Errorf("the stream was closed %v after the reload started, before stream_close_delay", elapsed)
++	}
++}
++
++// Detached streams are not closed by the delay either, which does not apply to them.
++func TestStreamDetachedIgnoresCloseDelay(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++	body := `reverse_proxy 127.0.0.1:54331 {
++		stream_detached
++		stream_close_delay 1s
++	}`
++	tester.InitServer(streamCaddyfile(1, body), "caddyfile")
++
++	tn := openTunnel(t, "/", "echo")
++	tester.InitServer(streamCaddyfile(2, body), "caddyfile")
++	time.Sleep(2 * time.Second)
++	tn.echo(t, "still open after the delay")
++}
++
++func TestStreamThroughEncode(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++
++	for _, tc := range []struct {
++		name string
++		opts string
++	}{
++		{name: "default"},
++		{name: "detached", opts: "stream_detached"},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			tester.InitServer(streamCaddyfile(1, fmt.Sprintf(`encode gzip
++	reverse_proxy 127.0.0.1:54331 {
++		%s
++	}`, tc.opts)), "caddyfile")
++
++			// not a WebSocket handshake, so encode is active for the request
++			tn := openTunnel(t, "/", "echo", "Accept-Encoding: gzip")
++			tn.echo(t, "through encode")
++			tn.echo(t, "and again")
++			_ = tn.conn.Close()
++
++			// responses that are not upgrades are still encoded
++			if tc.name == "default" {
++				req, _ := http.NewRequest(http.MethodGet, "http://localhost:9080/", nil)
++				req.Header.Set("Accept-Encoding", "gzip")
++				tester.AssertResponseCode(req, http.StatusOK)
++			}
++		})
++	}
++}
++
++func TestStreamWebSocketThroughEncode(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++	tester.InitServer(streamCaddyfile(1, `encode gzip
++	reverse_proxy 127.0.0.1:54331`), "caddyfile")
++
++	tn := openTunnel(t, "/", "websocket",
++		"Accept-Encoding: gzip",
++		"Sec-WebSocket-Version: 13",
++		"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==")
++	tn.echo(t, "websocket through encode")
++}
++
++// RFC 8441: a WebSocket over an HTTP/2 stream opened with an extended CONNECT.
++func TestStreamExtendedConnectOverH2(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++
++	for _, tc := range []struct {
++		name string
++		opts string
++	}{
++		{name: "default"},
++		{name: "detached", opts: "stream_detached"},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			tester.InitServer(fmt.Sprintf(`{
++	skip_install_trust
++	admin localhost:2999
++	http_port     9080
++	https_port    9443
++	grace_period  1ns
++}
++
++localhost:9443 {
++	reverse_proxy 127.0.0.1:54331 {
++		%s
++	}
++}`, tc.opts), "caddyfile")
++
++			c := openExtendedConnect(t, "/ws")
++			c.expectStatus(t, "200")
++			c.echo(t, "hello over h2")
++			c.echo(t, "and again")
++
++			// closing our side ends the stream
++			c.closeSend(t)
++			c.waitEnd(t)
++		})
++	}
++}
++
++// h2Event is something the server sent on the extended CONNECT stream.
++type h2Event struct {
++	noConnect bool // the server does not support extended CONNECT
++	status    string
++	data   []byte
++	end    bool
++	err    error
++}
++
++// h2Stream is a minimal HTTP/2 client with a single extended CONNECT stream
++// (RFC 8441), written with frames since the Go clients do not offer it.
++type h2Stream struct {
++	conn   net.Conn
++	mu     sync.Mutex // guards writes to fr
++	fr     *http2.Framer
++	events chan h2Event
++	buf    []byte // received data not consumed yet
++}
++
++func openExtendedConnect(t *testing.T, path string) *h2Stream {
++	t.Helper()
++	conn, err := tls.Dial("tcp", "127.0.0.1:9443", &tls.Config{ //nolint:gosec
++		InsecureSkipVerify: true,
++		NextProtos:         []string{"h2"},
++		ServerName:         "localhost",
++	})
++	if err != nil {
++		t.Fatalf("dialing caddy over TLS: %v", err)
++	}
++	t.Cleanup(func() { conn.Close() })
++
++	s := &h2Stream{conn: conn, fr: http2.NewFramer(conn, conn), events: make(chan h2Event, 64)}
++	if _, err := io.WriteString(conn, http2.ClientPreface); err != nil {
++		t.Fatalf("writing the client preface: %v", err)
++	}
++	if err := s.fr.WriteSettings(); err != nil {
++		t.Fatalf("writing settings: %v", err)
++	}
++
++	var block bytes.Buffer
++	enc := hpack.NewEncoder(&block)
++	for _, field := range [][2]string{
++		{":method", "CONNECT"},
++		{":protocol", "websocket"},
++		{":scheme", "https"},
++		{":path", path},
++		{":authority", "localhost:9443"},
++		{"sec-websocket-version", "13"},
++	} {
++		if err := enc.WriteField(hpack.HeaderField{Name: field[0], Value: field[1]}); err != nil {
++			t.Fatalf("encoding header %s: %v", field[0], err)
++		}
++	}
++	if err := s.fr.WriteHeaders(http2.HeadersFrameParam{StreamID: 1, BlockFragment: block.Bytes(), EndHeaders: true}); err != nil {
++		t.Fatalf("writing the request: %v", err)
++	}
++
++	go s.readLoop()
++	return s
++}
++
++func (s *h2Stream) readLoop() {
++	dec := hpack.NewDecoder(4096, nil)
++	for {
++		frame, err := s.fr.ReadFrame()
++		if err != nil {
++			s.events <- h2Event{err: err}
++			return
++		}
++		switch f := frame.(type) {
++		case *http2.SettingsFrame:
++			if !f.IsAck() {
++				var connectProtocol bool
++				_ = f.ForeachSetting(func(setting http2.Setting) error {
++					if setting.ID == http2.SettingEnableConnectProtocol && setting.Val == 1 {
++						connectProtocol = true
++					}
++					return nil
++				})
++				if !connectProtocol {
++					s.events <- h2Event{noConnect: true}
++				}
++				s.mu.Lock()
++				_ = s.fr.WriteSettingsAck()
++				s.mu.Unlock()
++			}
++		case *http2.PingFrame:
++			if !f.IsAck() {
++				s.mu.Lock()
++				_ = s.fr.WritePing(true, f.Data)
++				s.mu.Unlock()
++			}
++		case *http2.HeadersFrame:
++			fields, err := dec.DecodeFull(f.HeaderBlockFragment())
++			if err != nil {
++				s.events <- h2Event{err: err}
++				return
++			}
++			ev := h2Event{end: f.StreamEnded()}
++			for _, field := range fields {
++				if field.Name == ":status" {
++					ev.status = field.Value
++				}
++			}
++			s.events <- ev
++		case *http2.DataFrame:
++			s.events <- h2Event{data: append([]byte(nil), f.Data()...), end: f.StreamEnded()}
++		case *http2.RSTStreamFrame:
++			s.events <- h2Event{err: fmt.Errorf("stream reset: %v", f.ErrCode)}
++			return
++		case *http2.GoAwayFrame:
++			s.events <- h2Event{err: fmt.Errorf("go away: %v", f.ErrCode)}
++			return
++		}
++	}
++}
++
++func (s *h2Stream) next(t *testing.T) h2Event {
++	t.Helper()
++	for {
++		select {
++		case ev := <-s.events:
++			if ev.noConnect {
++				t.Skip("the HTTP/2 server does not support extended CONNECT; it needs GODEBUG=http2xconnect=1")
++			}
++			if ev.err != nil {
++				t.Fatalf("HTTP/2 connection failed: %v", ev.err)
++			}
++			return ev
++		case <-time.After(streamWait):
++			t.Fatal("timed out waiting for the server")
++			return h2Event{}
++		}
++	}
++}
++
++func (s *h2Stream) expectStatus(t *testing.T, want string) {
++	t.Helper()
++	if ev := s.next(t); ev.status != want {
++		t.Fatalf("response status = %q, want %q", ev.status, want)
++	}
++}
++
++// echo sends msg on the stream and expects to get it back.
++func (s *h2Stream) echo(t *testing.T, msg string) {
++	t.Helper()
++	s.mu.Lock()
++	err := s.fr.WriteData(1, false, []byte(msg))
++	s.mu.Unlock()
++	if err != nil {
++		t.Fatalf("writing %q: %v", msg, err)
++	}
++	for len(s.buf) < len(msg) {
++		s.buf = append(s.buf, s.next(t).data...)
++	}
++	if got := string(s.buf[:len(msg)]); got != msg {
++		t.Fatalf("stream echoed %q, want %q", got, msg)
++	}
++	s.buf = s.buf[len(msg):]
++}
++
++func (s *h2Stream) closeSend(t *testing.T) {
++	t.Helper()
++	s.mu.Lock()
++	err := s.fr.WriteData(1, true, nil)
++	s.mu.Unlock()
++	if err != nil {
++		t.Fatalf("closing the stream: %v", err)
++	}
++}
++
++// waitEnd waits for the server to end the stream.
++func (s *h2Stream) waitEnd(t *testing.T) {
++	t.Helper()
++	for {
++		if ev := s.next(t); ev.end {
++			return
++		}
++	}
++}
++
++func TestStreamLoadRejectsInvalidLogLevel(t *testing.T) {
++	caddytest.AssertLoadError(t, `{
++	"admin": {"listen": "localhost:2999"},
++	"apps": {
++		"http": {
++			"http_port": 9080,
++			"servers": {
++				"srv0": {
++					"listen": [":9080"],
++					"routes": [{
++						"handle": [{
++							"handler": "reverse_proxy",
++							"upstreams": [{"dial": "127.0.0.1:54331"}],
++							"stream_logs": {"level": "loud"}
++						}]
++					}]
++				}
++			}
++		}
++	}
++}`, "json", "invalid stream_logs level")
++}
++
++// logEntries reads the JSON log entries written to path.
++func logEntries(t *testing.T, path string) []map[string]any {
++	t.Helper()
++	data, err := os.ReadFile(path)
++	if err != nil {
++		if os.IsNotExist(err) {
++			return nil
++		}
++		t.Fatalf("reading log: %v", err)
++	}
++	var entries []map[string]any
++	for line := range strings.SplitSeq(string(data), "\n") {
++		if strings.TrimSpace(line) == "" {
++			continue
++		}
++		var entry map[string]any
++		if err := json.Unmarshal([]byte(line), &entry); err != nil {
++			t.Fatalf("log line %q is not JSON: %v", line, err)
++		}
++		entries = append(entries, entry)
++	}
++	return entries
++}
++
++func findLogEntries(entries []map[string]any, msg string) []map[string]any {
++	var found []map[string]any
++	for _, e := range entries {
++		if e["msg"] == msg {
++			found = append(found, e)
++		}
++	}
++	return found
++}
++
++// waitForLog waits for an entry with the message to be written to the log at path.
++func waitForLog(t *testing.T, path, msg string) map[string]any {
++	t.Helper()
++	deadline := time.Now().Add(streamWait)
++	for {
++		if found := findLogEntries(logEntries(t, path), msg); len(found) > 0 {
++			return found[0]
++		}
++		if time.Now().After(deadline) {
++			t.Fatalf("no %q entry in the log: %v", msg, logEntries(t, path))
++		}
++		time.Sleep(50 * time.Millisecond)
++	}
++}
++
++// closeTunnel ends a tunnel from the client side, which also ends the backend's echo.
++func closeTunnel(tn *tunnel) { _ = tn.conn.Close() }
++
++func accessLogCaddyfile(gen int, logPath, streamOpts string) string {
++	return streamCaddyfile(gen, fmt.Sprintf(`log {
++		output file %s
++		format json
++		level DEBUG
++	}
++	reverse_proxy 127.0.0.1:54331 {
++		%s
++	}`, logPath, streamOpts))
++}
++
++func TestStreamLogsDefault(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++	logPath := filepath.ToSlash(filepath.Join(t.TempDir(), "access.log"))
++	tester.InitServer(accessLogCaddyfile(1, logPath, ""), "caddyfile")
++
++	tn := openTunnel(t, "/ws", "echo")
++	tn.echo(t, "ping")
++	closeTunnel(tn)
++
++	closed := waitForLog(t, logPath, "stream closed")
++	if closed["level"] != "debug" {
++		t.Errorf("stream close logged at %v, want the default, debug", closed["level"])
++	}
++	if got, _ := closed["bytes_to_backend"].(float64); got < 4 {
++		t.Errorf("bytes_to_backend = %v, want at least 4", closed["bytes_to_backend"])
++	}
++	if got, _ := closed["bytes_from_backend"].(float64); got < 4 {
++		t.Errorf("bytes_from_backend = %v, want at least 4", closed["bytes_from_backend"])
++	}
++	if closed["upstream"] != streamBackendA {
++		t.Errorf("upstream = %v, want %s", closed["upstream"], streamBackendA)
++	}
++	if closed["result"] == nil {
++		t.Errorf("no result in the stream close log: %v", closed)
++	}
++
++	// by default the handshake is logged
++	handshake := waitForLog(t, logPath, "handled request")
++	if status, _ := handshake["status"].(float64); status != http.StatusSwitchingProtocols {
++		t.Errorf("handshake logged with status %v, want 101", handshake["status"])
++	}
++}
++
++func TestStreamLogsSkipHandshakeAndLevel(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++	logPath := filepath.ToSlash(filepath.Join(t.TempDir(), "access.log"))
++	tester.InitServer(accessLogCaddyfile(1, logPath, `stream_logs {
++			skip_handshake
++			level warn
++		}`), "caddyfile")
++
++	tn := openTunnel(t, "/ws", "echo")
++	tn.echo(t, "ping")
++	closeTunnel(tn)
++
++	closed := waitForLog(t, logPath, "stream closed")
++	if closed["level"] != "warn" {
++		t.Errorf("stream close logged at %v, want warn", closed["level"])
++	}
++
++	// the handshake is written when the handler returns, which is after the stream closes
++	time.Sleep(time.Second)
++	if handshake := findLogEntries(logEntries(t, logPath), "handled request"); len(handshake) > 0 {
++		t.Errorf("the handshake was logged although skip_handshake is set: %v", handshake)
++	}
++
++	// requests that are not upgrades are logged as usual
++	tester.AssertGetResponse("http://localhost:9080/plain", 200, "plain response")
++	waitForLog(t, logPath, "handled request")
++}
++
++func TestStreamDetachedWithAccessLogging(t *testing.T) {
++	startUpgradeBackend(t, streamBackendA)
++	tester := caddytest.NewTester(t)
++	logPath := filepath.ToSlash(filepath.Join(t.TempDir(), "access.log"))
++	opts := `stream_detached
++		stream_logs {
++			level info
++		}`
++	tester.InitServer(accessLogCaddyfile(1, logPath, opts), "caddyfile")
++
++	tn := openTunnel(t, "/ws", "echo")
++	tn.echo(t, "before reload")
++
++	tester.InitServer(accessLogCaddyfile(2, logPath, opts), "caddyfile")
++	tn.echo(t, "after reload")
++	closeTunnel(tn)
++
++	// the stream outlived the config it was started with, and still logs
++	closed := waitForLog(t, logPath, "stream closed")
++	if closed["level"] != "info" {
++		t.Errorf("stream close logged at %v, want info", closed["level"])
++	}
++	if got, _ := closed["bytes_to_backend"].(float64); got < float64(len("before reload")+len("after reload")) {
++		t.Errorf("bytes_to_backend = %v, want the traffic from before and after the reload", closed["bytes_to_backend"])
++	}
++	waitForLog(t, logPath, "handled request")
++
++	// and a stream closed by a reload that removes its upstream is logged as well
++	tn2 := openTunnel(t, "/ws", "echo")
++	tn2.echo(t, "second")
++	tester.InitServer(streamCaddyfile(3, fmt.Sprintf("log {\n\t\toutput file %s\n\t\tformat json\n\t\tlevel DEBUG\n\t}\n\trespond \"gone\"", logPath)), "caddyfile")
++	tn2.waitClosed(t, streamWait)
++	deadline := time.Now().Add(streamWait)
++	for len(findLogEntries(logEntries(t, logPath), "stream closed")) < 2 {
++		if time.Now().After(deadline) {
++			t.Fatalf("the stream closed by the reload was not logged: %v", logEntries(t, logPath))
++		}
++		time.Sleep(50 * time.Millisecond)
++	}
++	var results []any
++	for _, e := range findLogEntries(logEntries(t, logPath), "stream closed") {
++		results = append(results, e["result"])
++	}
++	if results[len(results)-1] != "closed" {
++		t.Errorf("stream closed by the reload has result %v, want closed (all: %v)", results[len(results)-1], results)
++	}
++}
+diff --git a/modules/caddyhttp/encode/encode.go b/modules/caddyhttp/encode/encode.go
+index 46b383ea..9c997d85 100644
+--- a/modules/caddyhttp/encode/encode.go
++++ b/modules/caddyhttp/encode/encode.go
+@@ -20,10 +20,12 @@
+ package encode
+ 
+ import (
++	"bufio"
+ 	"cmp"
+ 	"fmt"
+ 	"io"
+ 	"math"
++	"net"
+ 	"net/http"
+ 	"slices"
+ 	"strconv"
+@@ -255,12 +257,37 @@ type responseWriter struct {
+ 	incremental  bool
+ 	isConnect    bool
+ 	disabled     bool // disable encoding for this response
++	hijacked     bool // the connection was taken over; nothing may be written anymore
++}
++
++// Hijack implements http.Hijacker. After a successful hijack the
++// connection no longer carries an HTTP response, so the writer
++// stops writing headers and bodies to the underlying writer.
++func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
++	//nolint:bodyclose
++	conn, brw, err := http.NewResponseController(rw.ResponseWriter).Hijack()
++	if err != nil {
++		return nil, nil, err
++	}
++	rw.hijacked = true
++	rw.wroteHeader = true
++	return conn, brw, nil
+ }
+ 
+ // WriteHeader stores the status to write when the time comes
+-// to actually write the header.
++// to actually write the header. A 101 (Switching Protocols) is
++// the final response of an upgrade, so it is written right away
++// and never encoded.
+ func (rw *responseWriter) WriteHeader(status int) {
++	if rw.hijacked {
++		return
++	}
+ 	rw.statusCode = status
++	if status == http.StatusSwitchingProtocols {
++		rw.ResponseWriter.WriteHeader(status)
++		rw.wroteHeader = true
++		return
++	}
+ 	if status == http.StatusPartialContent {
+ 		rw.disabled = true // partial representations must not be dynamically re-encoded
+ 	}
+@@ -332,6 +359,9 @@ func (enc *Encode) Match(rw *responseWriter) bool {
+ // FlushError is an alternative Flush returning an error. It delays the actual Flush of the underlying
+ // ResponseWriterWrapper until headers were written.
+ func (rw *responseWriter) FlushError() error {
++	if rw.hijacked {
++		return nil
++	}
+ 	if !rw.wroteHeader && rw.statusCode == 0 && caddyhttp.IsIncremental(rw.Header()) {
+ 		rw.WriteHeader(http.StatusOK)
+ 	}
+@@ -365,6 +395,10 @@ func (rw *responseWriter) FlushError() error {
+ // it is encoded using the encoder, which is initialized
+ // if not done so already.
+ func (rw *responseWriter) Write(p []byte) (int, error) {
++	if rw.hijacked {
++		return 0, http.ErrHijacked
++	}
++
+ 	// ignore zero data writes, probably head request
+ 	if len(p) == 0 {
+ 		return 0, nil
+@@ -438,6 +472,9 @@ const sniffLen = 512
+ // It's based on the standard library HTTP/1.1 response writer implementation.
+ // https://github.com/golang/go/blob/f4e3ec3dbe3b8e04a058d266adf8e048bab563f2/src/net/http/server.go#L586
+ func (rw *responseWriter) ReadFrom(r io.Reader) (int64, error) {
++	if rw.hijacked {
++		return 0, http.ErrHijacked
++	}
+ 	if rw.incremental || !rw.wroteHeader && caddyhttp.IsIncremental(rw.Header()) {
+ 		return io.Copy(writerOnly{rw}, r)
+ 	}
+@@ -491,7 +528,10 @@ func (rw *responseWriter) Close() error {
+ 
+ 	var err error
+ 	if rw.w != nil {
+-		err = rw.w.Close()
++		// the encoder's trailer cannot go anywhere on a hijacked connection
++		if !rw.hijacked {
++			err = rw.w.Close()
++		}
+ 		rw.w.Reset(nil)
+ 		rw.config.writerPools[rw.encodingName].Put(rw.w)
+ 		rw.w = nil
+diff --git a/modules/caddyhttp/encode/encode_conformance_test.go b/modules/caddyhttp/encode/encode_conformance_test.go
+index 971d5eb5..c37956e4 100644
+--- a/modules/caddyhttp/encode/encode_conformance_test.go
++++ b/modules/caddyhttp/encode/encode_conformance_test.go
+@@ -1,8 +1,12 @@
+ package encode_test
+ 
+ import (
++	"bufio"
+ 	"bytes"
++	"errors"
+ 	"fmt"
++	"io"
++	"net"
+ 	"net/http"
+ 	"net/http/httptest"
+ 	"slices"
+@@ -16,6 +20,170 @@ import (
+ 
+ const conformanceContentType = "text/plain"
+ 
++// hijackableRecorder is a response writer that can be hijacked, and
++// that notes everything written to it after that, which is an error.
++type hijackableRecorder struct {
++	*httptest.ResponseRecorder
++	hijackErr      error
++	hijacked       bool
++	headers        []int // status codes written, in order
++	writesAfterHij int
++	peer           net.Conn
++}
++
++func (h *hijackableRecorder) WriteHeader(code int) {
++	if h.hijacked {
++		h.writesAfterHij++
++	}
++	h.headers = append(h.headers, code)
++	h.ResponseRecorder.WriteHeader(code)
++}
++
++func (h *hijackableRecorder) Write(p []byte) (int, error) {
++	if h.hijacked {
++		h.writesAfterHij++
++	}
++	return h.ResponseRecorder.Write(p)
++}
++
++func (h *hijackableRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
++	if h.hijackErr != nil {
++		return nil, nil, h.hijackErr
++	}
++	h.hijacked = true
++	conn, peer := net.Pipe()
++	h.peer = peer
++	return conn, bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)), nil
++}
++
++// An upgrade works through encode: the 101 is final and is written as is,
++// and once the connection is hijacked nothing is written to the response.
++func TestEncodeUpgradeAndHijack(t *testing.T) {
++	for _, encCase := range standardEncoderCases(t) {
++		t.Run(encCase.name, func(t *testing.T) {
++			enc := newEncodeHandler(t, encCase, 1)
++
++			w := &hijackableRecorder{ResponseRecorder: httptest.NewRecorder()}
++			r := httptest.NewRequest(http.MethodGet, "/ws", nil)
++			r.Header.Set("Accept-Encoding", encCase.encoding.AcceptEncoding())
++			r.Header.Set("Connection", "Upgrade")
++			r.Header.Set("Upgrade", "websocket")
++
++			var hijackErr error
++			var afterHijack struct {
++				n        int
++				err      error
++				readFrom error
++				flush    error
++			}
++			next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++				w.Header().Set("Content-Type", "text/plain")
++				w.Header().Set("Upgrade", "websocket")
++				w.Header().Set("Connection", "Upgrade")
++				w.WriteHeader(http.StatusSwitchingProtocols)
++
++				conn, _, err := http.NewResponseController(w).Hijack()
++				hijackErr = err
++				if err != nil {
++					return nil
++				}
++				defer conn.Close()
++
++				// all of this must be refused or ignored
++				w.WriteHeader(http.StatusOK)
++				afterHijack.n, afterHijack.err = w.Write([]byte(strings.Repeat("data ", 100)))
++				_, afterHijack.readFrom = w.(io.ReaderFrom).ReadFrom(strings.NewReader("more"))
++				afterHijack.flush = http.NewResponseController(w).Flush()
++				return nil
++			})
++			if err := enc.ServeHTTP(w, r, next); err != nil {
++				t.Fatal(err)
++			}
++
++			if hijackErr != nil {
++				t.Fatalf("hijack failed: %v", hijackErr)
++			}
++			if !slices.Equal(w.headers, []int{http.StatusSwitchingProtocols}) {
++				t.Errorf("status codes written = %v, want only 101", w.headers)
++			}
++			if got := w.Header().Get("Content-Encoding"); got != "" {
++				t.Errorf("a 101 was encoded: Content-Encoding = %q", got)
++			}
++			if w.writesAfterHij != 0 {
++				t.Errorf("%d writes reached the response after the hijack", w.writesAfterHij)
++			}
++			if w.Body.Len() != 0 {
++				t.Errorf("body = %q, want empty", w.Body.String())
++			}
++			if afterHijack.n != 0 || !errors.Is(afterHijack.err, http.ErrHijacked) {
++				t.Errorf("Write after hijack = %d, %v; want 0, %v", afterHijack.n, afterHijack.err, http.ErrHijacked)
++			}
++			if !errors.Is(afterHijack.readFrom, http.ErrHijacked) {
++				t.Errorf("ReadFrom after hijack = %v, want %v", afterHijack.readFrom, http.ErrHijacked)
++			}
++			if afterHijack.flush != nil {
++				t.Errorf("Flush after hijack = %v, want nil", afterHijack.flush)
++			}
++		})
++	}
++}
++
++// A hijack that fails leaves the writer usable.
++func TestEncodeFailedHijack(t *testing.T) {
++	encCase := standardEncoderCases(t)[0]
++	enc := newEncodeHandler(t, encCase, 1)
++
++	hijackFailure := errors.New("hijack failed")
++	w := &hijackableRecorder{ResponseRecorder: httptest.NewRecorder(), hijackErr: hijackFailure}
++	r := httptest.NewRequest(http.MethodGet, "/", nil)
++	r.Header.Set("Accept-Encoding", encCase.encoding.AcceptEncoding())
++
++	var hijackErr error
++	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++		_, _, hijackErr = http.NewResponseController(w).Hijack()
++		w.Header().Set("Content-Type", conformanceContentType)
++		_, err := w.Write([]byte("still writable"))
++		return err
++	})
++	if err := enc.ServeHTTP(w, r, next); err != nil {
++		t.Fatal(err)
++	}
++	if !errors.Is(hijackErr, hijackFailure) {
++		t.Fatalf("hijack error = %v, want %v", hijackErr, hijackFailure)
++	}
++	if w.Code != http.StatusOK || w.Body.Len() == 0 {
++		t.Errorf("response after failed hijack: %d, %d body bytes", w.Code, w.Body.Len())
++	}
++}
++
++// A hijack after the response started to be encoded does not try to finish the encoded stream.
++func TestEncodeHijackAfterEncodingStarted(t *testing.T) {
++	encCase := standardEncoderCases(t)[0]
++	enc := newEncodeHandler(t, encCase, 1)
++
++	w := &hijackableRecorder{ResponseRecorder: httptest.NewRecorder()}
++	r := httptest.NewRequest(http.MethodGet, "/", nil)
++	r.Header.Set("Accept-Encoding", encCase.encoding.AcceptEncoding())
++
++	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++		w.Header().Set("Content-Type", conformanceContentType)
++		if _, err := w.Write([]byte(strings.Repeat("compress me ", 1000))); err != nil {
++			return err
++		}
++		conn, _, err := http.NewResponseController(w).Hijack()
++		if err != nil {
++			return err
++		}
++		return conn.Close()
++	})
++	if err := enc.ServeHTTP(w, r, next); err != nil {
++		t.Fatal(err)
++	}
++	if w.writesAfterHij != 0 {
++		t.Errorf("%d writes reached the response after the hijack", w.writesAfterHij)
++	}
++}
++
+ func TestEncodeIfNoneMatch(t *testing.T) {
+ 	for _, encCase := range standardEncoderCases(t) {
+ 		t.Run(encCase.name, func(t *testing.T) {
+diff --git a/modules/caddyhttp/intercept/intercept_test.go b/modules/caddyhttp/intercept/intercept_test.go
+new file mode 100644
+index 00000000..7dfc4d68
+--- /dev/null
++++ b/modules/caddyhttp/intercept/intercept_test.go
+@@ -0,0 +1,138 @@
++package intercept
++
++import (
++	"bufio"
++	"context"
++	"net"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++
++	"go.uber.org/zap"
++
++	"github.com/caddyserver/caddy/v2"
++	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
++)
++
++// hijackSpyWriter is a response writer that can be hijacked and notes
++// what is written to it, and whether that was after the hijack.
++type hijackSpyWriter struct {
++	*httptest.ResponseRecorder
++	hijacked    bool
++	statuses    []int
++	afterHijack int
++}
++
++func (h *hijackSpyWriter) WriteHeader(code int) {
++	if h.hijacked {
++		h.afterHijack++
++	}
++	h.statuses = append(h.statuses, code)
++	h.ResponseRecorder.WriteHeader(code)
++}
++
++func (h *hijackSpyWriter) Write(p []byte) (int, error) {
++	if h.hijacked {
++		h.afterHijack++
++	}
++	return h.ResponseRecorder.Write(p)
++}
++
++func (h *hijackSpyWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
++	h.hijacked = true
++	conn, _ := net.Pipe()
++	return conn, bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)), nil
++}
++
++func newInterceptRequest() *http.Request {
++	r := httptest.NewRequest(http.MethodGet, "/ws", nil)
++	r.Header.Set("Connection", "Upgrade")
++	r.Header.Set("Upgrade", "websocket")
++	return r.WithContext(context.WithValue(r.Context(), caddy.ReplacerCtxKey, caddy.NewReplacer()))
++}
++
++// A response handler that matches every response, like a bare handle_response.
++func newCatchAllIntercept() Intercept {
++	return Intercept{
++		HandleResponse: []caddyhttp.ResponseHandler{{}},
++		logger:         zap.NewNop(),
++	}
++}
++
++// An upgrade is the final response: it is not intercepted, and once
++// the connection is hijacked nothing more is written to the response.
++func TestInterceptUpgradeIsNotIntercepted(t *testing.T) {
++	w := &hijackSpyWriter{ResponseRecorder: httptest.NewRecorder()}
++
++	var hijackErr error
++	err := newCatchAllIntercept().ServeHTTP(w, newInterceptRequest(), caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++		w.Header().Set("Upgrade", "websocket")
++		w.Header().Set("Connection", "Upgrade")
++		w.WriteHeader(http.StatusSwitchingProtocols)
++		conn, _, err := http.NewResponseController(w).Hijack()
++		hijackErr = err
++		if err == nil {
++			conn.Close()
++		}
++		return nil
++	}))
++	if err != nil {
++		t.Fatalf("ServeHTTP() = %v", err)
++	}
++	if hijackErr != nil {
++		t.Fatalf("hijack through intercept failed: %v", hijackErr)
++	}
++	if len(w.statuses) != 1 || w.statuses[0] != http.StatusSwitchingProtocols {
++		t.Errorf("statuses written = %v, want [101]", w.statuses)
++	}
++	if w.afterHijack != 0 {
++		t.Errorf("%d writes reached the response after the hijack", w.afterHijack)
++	}
++	if w.Body.Len() != 0 {
++		t.Errorf("body = %q, want empty", w.Body.String())
++	}
++}
++
++// A connection hijacked without a response ever being written is not
++// a response to intercept either.
++func TestInterceptHijackWithoutResponse(t *testing.T) {
++	w := &hijackSpyWriter{ResponseRecorder: httptest.NewRecorder()}
++
++	err := newCatchAllIntercept().ServeHTTP(w, newInterceptRequest(), caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++		conn, _, err := http.NewResponseController(w).Hijack()
++		if err != nil {
++			return err
++		}
++		return conn.Close()
++	}))
++	if err != nil {
++		t.Fatalf("ServeHTTP() = %v", err)
++	}
++	if len(w.statuses) != 0 || w.afterHijack != 0 {
++		t.Errorf("response written after hijack: statuses=%v, writes after hijack=%d", w.statuses, w.afterHijack)
++	}
++}
++
++// Regular responses are still intercepted.
++func TestInterceptStillBuffersRegularResponses(t *testing.T) {
++	ir := Intercept{
++		HandleResponse: []caddyhttp.ResponseHandler{{StatusCode: "418"}},
++		logger:         zap.NewNop(),
++	}
++	w := httptest.NewRecorder()
++
++	err := ir.ServeHTTP(w, newInterceptRequest(), caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++		w.WriteHeader(http.StatusOK)
++		_, err := w.Write([]byte("original"))
++		return err
++	}))
++	if err != nil {
++		t.Fatalf("ServeHTTP() = %v", err)
++	}
++	if w.Code != http.StatusTeapot {
++		t.Errorf("status = %d, want %d", w.Code, http.StatusTeapot)
++	}
++	if got := w.Body.String(); got != "original" {
++		t.Errorf("body = %q, want %q", got, "original")
++	}
++}
+diff --git a/modules/caddyhttp/responsewriter.go b/modules/caddyhttp/responsewriter.go
+index 904c30c0..d1e6d83a 100644
+--- a/modules/caddyhttp/responsewriter.go
++++ b/modules/caddyhttp/responsewriter.go
+@@ -70,6 +70,7 @@ type responseRecorder struct {
+ 	size         int
+ 	wroteHeader  bool
+ 	stream       bool
++	hijacked     bool
+ 
+ 	readSize *int
+ }
+@@ -144,9 +145,12 @@ func NewResponseRecorder(w http.ResponseWriter, buf *bytes.Buffer, shouldBuffer
+ 
+ // WriteHeader writes the headers with statusCode to the wrapped
+ // ResponseWriter unless the response is to be buffered instead.
+-// 1xx responses are never buffered.
++// 1xx responses are never buffered, except 101 (Switching Protocols),
++// which is the final response of an upgrade: it is never buffered and
++// nothing else can be written after it. Once the connection was hijacked
++// nothing is written to the underlying writer anymore.
+ func (rr *responseRecorder) WriteHeader(statusCode int) {
+-	if rr.wroteHeader {
++	if rr.wroteHeader || rr.hijacked {
+ 		return
+ 	}
+ 
+@@ -154,6 +158,14 @@ func (rr *responseRecorder) WriteHeader(statusCode int) {
+ 	// connections by manually setting headers and writing status 101
+ 	rr.statusCode = statusCode
+ 
++	// a 101 is final, and the response that follows is not an HTTP one
++	if statusCode == http.StatusSwitchingProtocols {
++		rr.stream = true
++		rr.wroteHeader = true
++		rr.ResponseWriterWrapper.WriteHeader(statusCode)
++		return
++	}
++
+ 	// decide whether we should buffer the response
+ 	if rr.shouldBuffer == nil {
+ 		rr.stream = true
+@@ -173,6 +185,9 @@ func (rr *responseRecorder) WriteHeader(statusCode int) {
+ }
+ 
+ func (rr *responseRecorder) Write(data []byte) (int, error) {
++	if rr.hijacked {
++		return 0, http.ErrHijacked
++	}
+ 	rr.WriteHeader(http.StatusOK)
+ 	var n int
+ 	var err error
+@@ -187,6 +202,9 @@ func (rr *responseRecorder) Write(data []byte) (int, error) {
+ }
+ 
+ func (rr *responseRecorder) ReadFrom(r io.Reader) (int64, error) {
++	if rr.hijacked {
++		return 0, http.ErrHijacked
++	}
+ 	rr.WriteHeader(http.StatusOK)
+ 	var n int64
+ 	var err error
+@@ -218,11 +236,15 @@ func (rr *responseRecorder) Buffer() *bytes.Buffer {
+ }
+ 
+ // Buffered returns whether rr has decided to buffer the response.
++// A hijacked connection has no response to buffer.
+ func (rr *responseRecorder) Buffered() bool {
+-	return !rr.stream
++	return !rr.stream && !rr.hijacked
+ }
+ 
+ func (rr *responseRecorder) WriteResponse() error {
++	if rr.hijacked {
++		return nil
++	}
+ 	if rr.statusCode == 0 {
+ 		// could happen if no handlers actually wrote anything,
+ 		// and this prevents a panic; status must be > 0
+@@ -239,6 +261,9 @@ func (rr *responseRecorder) WriteResponse() error {
+ // FlushError will suppress actual flushing if the response is buffered. See:
+ // https://github.com/caddyserver/caddy/issues/6144
+ func (rr *responseRecorder) FlushError() error {
++	if rr.hijacked {
++		return nil
++	}
+ 	if rr.stream {
+ 		//nolint:bodyclose
+ 		return http.NewResponseController(rr.ResponseWriterWrapper).Flush()
+@@ -258,6 +283,7 @@ func (rr *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+ 	if err != nil {
+ 		return nil, nil, err
+ 	}
++	rr.hijacked = true
+ 	// Per http documentation, returned bufio.Writer is empty, but bufio.Read maybe not
+ 	conn = &hijackedConn{conn, rr}
+ 	brw.Writer.Reset(conn)
+@@ -281,6 +307,14 @@ type hijackedConn struct {
+ 	rr *responseRecorder
+ }
+ 
++// UnwrapHijacked returns the underlying connection, which does not
++// account for the traffic in the response recorder. Streams that
++// copy bytes on the raw connection (such as a proxied upgrade)
++// should use it instead of the wrapper.
++func (hc *hijackedConn) UnwrapHijacked() net.Conn {
++	return hc.Conn
++}
++
+ func (hc *hijackedConn) updateReadSize(n int) {
+ 	if hc.rr.readSize != nil {
+ 		*hc.rr.readSize += n
+diff --git a/modules/caddyhttp/responsewriter_test.go b/modules/caddyhttp/responsewriter_test.go
+index c08ad26a..4fca980f 100644
+--- a/modules/caddyhttp/responsewriter_test.go
++++ b/modules/caddyhttp/responsewriter_test.go
+@@ -1,13 +1,247 @@
+ package caddyhttp
+ 
+ import (
++	"bufio"
+ 	"bytes"
++	"context"
++	"errors"
+ 	"io"
++	"net"
+ 	"net/http"
++	"net/http/httptest"
+ 	"strings"
+ 	"testing"
++
++	"go.uber.org/zap"
++	"go.uber.org/zap/zapcore"
+ )
+ 
++func TestServerLogStream(t *testing.T) {
++	newReq := func(vars map[string]any) *http.Request {
++		r := httptest.NewRequest(http.MethodGet, "http://example.com/ws", nil)
++		if vars != nil {
++			r = r.WithContext(context.WithValue(r.Context(), VarsCtxKey, vars))
++		}
++		return r
++	}
++
++	t.Run("access logging disabled", func(t *testing.T) {
++		s := &Server{}
++		if s.LogStream(newReq(nil), zapcore.DebugLevel, "stream closed") {
++			t.Error("LogStream() = true on a server without access logs")
++		}
++	})
++
++	t.Run("skipped host", func(t *testing.T) {
++		var buf syncBuffer
++		s := &Server{accessLogger: testLogger(buf.Write), Logs: &ServerLogConfig{SkipHosts: []string{"example.com"}}}
++		if s.LogStream(newReq(nil), zapcore.DebugLevel, "stream closed") {
++			t.Error("LogStream() = true for a host that is skipped")
++		}
++		if buf.String() != "" {
++			t.Errorf("logged: %s", buf.String())
++		}
++	})
++
++	t.Run("logged at the given level", func(t *testing.T) {
++		var buf syncBuffer
++		s := &Server{accessLogger: testLogger(buf.Write), Logs: &ServerLogConfig{}}
++		if !s.LogStream(newReq(nil), zapcore.WarnLevel, "stream closed", zap.String("result", "completed")) {
++			t.Fatal("LogStream() = false")
++		}
++		out := buf.String()
++		for _, want := range []string{`"level":"warn"`, `"msg":"stream closed"`, `"result":"completed"`} {
++			if !strings.Contains(out, want) {
++				t.Errorf("log %s does not contain %s", out, want)
++			}
++		}
++	})
++
++	t.Run("handshake skipped from the access log", func(t *testing.T) {
++		var buf syncBuffer
++		s := &Server{accessLogger: testLogger(buf.Write), Logs: &ServerLogConfig{}}
++		skipped := newReq(map[string]any{LogSkipVar: true})
++		if !s.LogStream(skipped, zapcore.DebugLevel, "stream closed") {
++			t.Fatal("LogStream() = false for a request flagged to skip its access log entry")
++		}
++		if !strings.Contains(buf.String(), `"msg":"stream closed"`) {
++			t.Errorf("stream close not logged: %q", buf.String())
++		}
++	})
++}
++
++// hijackSpyWriter is a response writer that can be hijacked and notes
++// the header and body writes that reach it, and whether they came
++// after the hijack.
++type hijackSpyWriter struct {
++	header      http.Header
++	hijackErr   error
++	hijacked    bool
++	statuses    []int
++	body        bytes.Buffer
++	afterHijack int
++	flushes     int
++	raw, peer   net.Conn
++}
++
++func newHijackSpyWriter() *hijackSpyWriter {
++	return &hijackSpyWriter{header: make(http.Header)}
++}
++
++func (h *hijackSpyWriter) Header() http.Header { return h.header }
++
++func (h *hijackSpyWriter) WriteHeader(code int) {
++	if h.hijacked {
++		h.afterHijack++
++	}
++	h.statuses = append(h.statuses, code)
++}
++
++func (h *hijackSpyWriter) Write(p []byte) (int, error) {
++	if h.hijacked {
++		h.afterHijack++
++	}
++	return h.body.Write(p)
++}
++
++func (h *hijackSpyWriter) Flush() { h.flushes++ }
++
++func (h *hijackSpyWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
++	if h.hijackErr != nil {
++		return nil, nil, h.hijackErr
++	}
++	h.hijacked = true
++	h.raw, h.peer = net.Pipe()
++	return h.raw, bufio.NewReadWriter(bufio.NewReader(h.raw), bufio.NewWriter(h.raw)), nil
++}
++
++func TestResponseRecorderSwitchingProtocolsIsFinal(t *testing.T) {
++	for _, buffering := range []bool{false, true} {
++		w := newHijackSpyWriter()
++		rr := NewResponseRecorder(w, new(bytes.Buffer), func(int, http.Header) bool { return buffering })
++
++		rr.WriteHeader(http.StatusSwitchingProtocols)
++		// nothing can follow the final response
++		rr.WriteHeader(http.StatusOK)
++
++		if rr.Buffered() {
++			t.Errorf("buffering=%v: a 101 was buffered", buffering)
++		}
++		if got := rr.Status(); got != http.StatusSwitchingProtocols {
++			t.Errorf("buffering=%v: status = %d, want 101", buffering, got)
++		}
++		if len(w.statuses) != 1 || w.statuses[0] != http.StatusSwitchingProtocols {
++			t.Errorf("buffering=%v: statuses written = %v, want [101]", buffering, w.statuses)
++		}
++		if err := rr.WriteResponse(); err != nil {
++			t.Errorf("buffering=%v: WriteResponse() = %v", buffering, err)
++		}
++		if len(w.statuses) != 1 {
++			t.Errorf("buffering=%v: WriteResponse() wrote again: %v", buffering, w.statuses)
++		}
++	}
++}
++
++func TestResponseRecorderNoWritesAfterHijack(t *testing.T) {
++	w := newHijackSpyWriter()
++	buf := new(bytes.Buffer)
++	// asks for buffering, which a hijacked connection can't do
++	rr := NewResponseRecorder(w, buf, func(int, http.Header) bool { return true })
++	var readSize int
++	rr.(*responseRecorder).setReadSize(&readSize)
++
++	conn, brw, err := http.NewResponseController(rr).Hijack()
++	if err != nil {
++		t.Fatalf("Hijack() = %v", err)
++	}
++	if conn == nil || brw == nil {
++		t.Fatal("Hijack() returned no connection")
++	}
++	defer conn.Close()
++
++	if rr.Buffered() {
++		t.Error("a hijacked recorder reports buffering")
++	}
++
++	rr.WriteHeader(http.StatusOK)
++	if n, err := rr.Write([]byte("body")); n != 0 || !errors.Is(err, http.ErrHijacked) {
++		t.Errorf("Write() = %d, %v; want 0, %v", n, err, http.ErrHijacked)
++	}
++	if n, err := rr.(io.ReaderFrom).ReadFrom(strings.NewReader("body")); n != 0 || !errors.Is(err, http.ErrHijacked) {
++		t.Errorf("ReadFrom() = %d, %v; want 0, %v", n, err, http.ErrHijacked)
++	}
++	if err := rr.WriteResponse(); err != nil {
++		t.Errorf("WriteResponse() = %v, want nil", err)
++	}
++	if err := http.NewResponseController(rr).Flush(); err != nil {
++		t.Errorf("Flush() = %v, want nil", err)
++	}
++
++	if w.afterHijack != 0 {
++		t.Errorf("%d header or body writes reached the response after the hijack", w.afterHijack)
++	}
++	if len(w.statuses) != 0 || w.body.Len() != 0 || buf.Len() != 0 {
++		t.Errorf("something was written: statuses=%v body=%q buffer=%q", w.statuses, w.body.String(), buf.String())
++	}
++	if w.flushes != 0 {
++		t.Errorf("%d flushes reached the response after the hijack", w.flushes)
++	}
++	if rr.Size() != 0 {
++		t.Errorf("Size() = %d, want 0", rr.Size())
++	}
++}
++
++func TestResponseRecorderFailedHijack(t *testing.T) {
++	w := newHijackSpyWriter()
++	w.hijackErr = errors.New("cannot hijack")
++	rr := NewResponseRecorder(w, nil, nil)
++
++	if _, _, err := http.NewResponseController(rr).Hijack(); !errors.Is(err, w.hijackErr) {
++		t.Fatalf("Hijack() = %v, want %v", err, w.hijackErr)
++	}
++
++	// the response is still usable
++	if _, err := rr.Write([]byte("body")); err != nil {
++		t.Errorf("Write() after a failed hijack = %v", err)
++	}
++	if w.body.String() != "body" {
++		t.Errorf("body = %q, want %q", w.body.String(), "body")
++	}
++}
++
++// The wrapper that tracks the traffic of a hijacked connection can be
++// bypassed by streams that copy bytes themselves.
++func TestHijackedConnUnwrap(t *testing.T) {
++	w := newHijackSpyWriter()
++	rr := NewResponseRecorder(w, nil, nil)
++
++	conn, _, err := http.NewResponseController(rr).Hijack()
++	if err != nil {
++		t.Fatalf("Hijack() = %v", err)
++	}
++	defer conn.Close()
++
++	unwrapper, ok := conn.(interface{ UnwrapHijacked() net.Conn })
++	if !ok {
++		t.Fatalf("hijacked conn %T has no UnwrapHijacked()", conn)
++	}
++	if got := unwrapper.UnwrapHijacked(); got != w.raw {
++		t.Errorf("UnwrapHijacked() = %v, want the connection that was hijacked", got)
++	}
++
++	// writing on the raw connection is not accounted by the recorder...
++	go func() {
++		buf := make([]byte, 5)
++		_, _ = io.ReadFull(w.peer, buf)
++	}()
++	if _, err := w.raw.Write([]byte("hello")); err != nil {
++		t.Fatalf("raw write: %v", err)
++	}
++	if rr.Size() != 0 {
++		t.Errorf("Size() = %d after a raw write, want 0", rr.Size())
++	}
++}
++
+ type responseWriterSpy interface {
+ 	http.ResponseWriter
+ 	Written() string
+diff --git a/modules/caddyhttp/reverseproxy/caddyfile.go b/modules/caddyhttp/reverseproxy/caddyfile.go
+index 12c1177b..25e63bae 100644
+--- a/modules/caddyhttp/reverseproxy/caddyfile.go
++++ b/modules/caddyhttp/reverseproxy/caddyfile.go
+@@ -23,6 +23,7 @@ import (
+ 	"strings"
+ 
+ 	"github.com/dustin/go-humanize"
++	"go.uber.org/zap/zapcore"
+ 
+ 	"github.com/caddyserver/caddy/v2"
+ 	"github.com/caddyserver/caddy/v2/caddyconfig"
+@@ -99,6 +100,11 @@ func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
+ //	    stream_buffer_size <size>
+ //	    stream_timeout     <duration>
+ //	    stream_close_delay <duration>
++//	    stream_detached
++//	    stream_logs {
++//	        skip_handshake
++//	        level <level>
++//	    }
+ //	    verbose_logs
+ //
+ //	    # reporting
+@@ -715,6 +721,43 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
+ 				h.StreamCloseDelay = caddy.Duration(dur)
+ 			}
+ 
++		case "stream_detached":
++			if d.NextArg() {
++				return d.ArgErr()
++			}
++			h.StreamDetached = true
++
++		case "stream_logs":
++			if d.NextArg() {
++				return d.ArgErr()
++			}
++			if h.StreamLogs == nil {
++				h.StreamLogs = new(StreamLogs)
++			}
++			for nesting := d.Nesting(); d.NextBlock(nesting); {
++				switch d.Val() {
++				case "skip_handshake":
++					if d.NextArg() {
++						return d.ArgErr()
++					}
++					h.StreamLogs.SkipHandshake = true
++				case "level":
++					if !d.NextArg() {
++						return d.ArgErr()
++					}
++					level := strings.ToLower(d.Val())
++					if err := new(zapcore.Level).UnmarshalText([]byte(level)); err != nil {
++						return d.Errf("invalid stream log level '%s': %v", d.Val(), err)
++					}
++					if d.NextArg() {
++						return d.ArgErr()
++					}
++					h.StreamLogs.Level = level
++				default:
++					return d.Errf("unrecognized stream_logs subdirective: %s", d.Val())
++				}
++			}
++
+ 		case "trusted_proxies":
+ 			for d.NextArg() {
+ 				if d.Val() == "private_ranges" {
+diff --git a/modules/caddyhttp/reverseproxy/caddyfile_test.go b/modules/caddyhttp/reverseproxy/caddyfile_test.go
+new file mode 100644
+index 00000000..43d78038
+--- /dev/null
++++ b/modules/caddyhttp/reverseproxy/caddyfile_test.go
+@@ -0,0 +1,165 @@
++package reverseproxy
++
++import (
++	"encoding/json"
++	"testing"
++
++	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
++)
++
++func TestUnmarshalCaddyfileStreamOptions(t *testing.T) {
++	for i, tc := range []struct {
++		input        string
++		wantDetached bool
++		wantLogs     *StreamLogs
++		wantErr      bool
++	}{
++		{input: `reverse_proxy localhost:8080`},
++		{
++			input: `reverse_proxy localhost:8080 {
++				stream_detached
++			}`,
++			wantDetached: true,
++		},
++		{
++			input: `reverse_proxy localhost:8080 {
++				stream_logs {
++					skip_handshake
++				}
++			}`,
++			wantLogs: &StreamLogs{SkipHandshake: true},
++		},
++		{
++			input: `reverse_proxy localhost:8080 {
++				stream_logs {
++					level INFO
++				}
++			}`,
++			wantLogs: &StreamLogs{Level: "info"},
++		},
++		{
++			input: `reverse_proxy localhost:8080 {
++				stream_detached
++				stream_logs {
++					skip_handshake
++					level warn
++				}
++			}`,
++			wantDetached: true,
++			wantLogs:     &StreamLogs{SkipHandshake: true, Level: "warn"},
++		},
++		{
++			// an empty block is accepted and leaves the defaults
++			input: `reverse_proxy localhost:8080 {
++				stream_logs
++			}`,
++			wantLogs: &StreamLogs{},
++		},
++		{
++			input: `reverse_proxy localhost:8080 {
++				stream_detached true
++			}`,
++			wantErr: true,
++		},
++		{
++			input: `reverse_proxy localhost:8080 {
++				stream_logs extra {
++					skip_handshake
++				}
++			}`,
++			wantErr: true,
++		},
++		{
++			input: `reverse_proxy localhost:8080 {
++				stream_logs {
++					skip_handshake true
++				}
++			}`,
++			wantErr: true,
++		},
++		{
++			input: `reverse_proxy localhost:8080 {
++				stream_logs {
++					level
++				}
++			}`,
++			wantErr: true,
++		},
++		{
++			input: `reverse_proxy localhost:8080 {
++				stream_logs {
++					level loud
++				}
++			}`,
++			wantErr: true,
++		},
++		{
++			input: `reverse_proxy localhost:8080 {
++				stream_logs {
++					level info debug
++				}
++			}`,
++			wantErr: true,
++		},
++		{
++			input: `reverse_proxy localhost:8080 {
++				stream_logs {
++					bogus
++				}
++			}`,
++			wantErr: true,
++		},
++	} {
++		var h Handler
++		err := h.UnmarshalCaddyfile(caddyfile.NewTestDispenser(tc.input))
++		if tc.wantErr {
++			if err == nil {
++				t.Errorf("Test %d: expected error but got none", i)
++			}
++			continue
++		}
++		if err != nil {
++			t.Errorf("Test %d: unexpected error: %v", i, err)
++			continue
++		}
++		if h.StreamDetached != tc.wantDetached {
++			t.Errorf("Test %d: StreamDetached = %v, want %v", i, h.StreamDetached, tc.wantDetached)
++		}
++		switch {
++		case tc.wantLogs == nil && h.StreamLogs != nil:
++			t.Errorf("Test %d: StreamLogs = %+v, want nil", i, *h.StreamLogs)
++		case tc.wantLogs != nil && h.StreamLogs == nil:
++			t.Errorf("Test %d: StreamLogs = nil, want %+v", i, *tc.wantLogs)
++		case tc.wantLogs != nil && *h.StreamLogs != *tc.wantLogs:
++			t.Errorf("Test %d: StreamLogs = %+v, want %+v", i, *h.StreamLogs, *tc.wantLogs)
++		}
++	}
++}
++
++func TestStreamOptionsJSONOmitsDefaults(t *testing.T) {
++	b, err := json.Marshal(Handler{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	var got map[string]any
++	if err := json.Unmarshal(b, &got); err != nil {
++		t.Fatal(err)
++	}
++	for _, key := range []string{"stream_detached", "stream_logs"} {
++		if _, ok := got[key]; ok {
++			t.Errorf("default config marshals %q: %s", key, b)
++		}
++	}
++
++	b, err = json.Marshal(Handler{StreamDetached: true, StreamLogs: &StreamLogs{SkipHandshake: true, Level: "info"}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	var h Handler
++	if err := json.Unmarshal(b, &h); err != nil {
++		t.Fatal(err)
++	}
++	if !h.StreamDetached || h.StreamLogs == nil || !h.StreamLogs.SkipHandshake || h.StreamLogs.Level != "info" {
++		t.Errorf("JSON round trip lost the stream options: %s", b)
++	}
++}
+diff --git a/modules/caddyhttp/reverseproxy/metrics.go b/modules/caddyhttp/reverseproxy/metrics.go
+index 24884273..16507255 100644
+--- a/modules/caddyhttp/reverseproxy/metrics.go
++++ b/modules/caddyhttp/reverseproxy/metrics.go
+@@ -43,9 +43,66 @@ func initReverseProxyMetrics(handler *Handler, registry *prometheus.Registry) {
+ 		panic(err)
+ 	}
+ 
++	for _, c := range []prometheus.Collector{
++		streamMetrics.active,
++		streamMetrics.closed,
++		streamMetrics.duration,
++		streamMetrics.bytes,
++	} {
++		// the same collectors are registered again on every reload; that is expected
++		if err := registry.Register(c); err != nil {
++			if _, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); !ok {
++				panic(err)
++			}
++		}
++	}
++
+ 	reverseProxyMetrics.logger = handler.logger.Named("reverse_proxy.metrics")
+ }
+ 
++// streamMetrics holds the metrics of upgraded streams. The collectors
++// are created up front, so streams can always be accounted for, and
++// registered with the metrics registry when a handler is provisioned.
++var streamMetrics = newStreamMetricSet()
++
++type streamMetricSet struct {
++	active   prometheus.Gauge
++	closed   *prometheus.CounterVec
++	duration prometheus.Histogram
++	bytes    *prometheus.CounterVec
++}
++
++func newStreamMetricSet() *streamMetricSet {
++	const ns, sub = "caddy", "reverse_proxy"
++	return &streamMetricSet{
++		active: prometheus.NewGauge(prometheus.GaugeOpts{
++			Namespace: ns,
++			Subsystem: sub,
++			Name:      "streams_active",
++			Help:      "Number of upgraded streams (such as WebSockets) currently open.",
++		}),
++		closed: prometheus.NewCounterVec(prometheus.CounterOpts{
++			Namespace: ns,
++			Subsystem: sub,
++			Name:      "streams_closed_total",
++			Help:      "Counter of upgraded streams that were closed, by result.",
++		}, []string{"result"}),
++		duration: prometheus.NewHistogram(prometheus.HistogramOpts{
++			Namespace: ns,
++			Subsystem: sub,
++			Name:      "stream_duration_seconds",
++			Help:      "Histogram of the duration of upgraded streams.",
++			Buckets:   []float64{0.1, 1, 10, 60, 300, 1800, 3600, 86400},
++		}),
++		bytes: prometheus.NewCounterVec(prometheus.CounterOpts{
++			Namespace: ns,
++			Subsystem: sub,
++			Name:      "stream_bytes_total",
++			Help:      "Counter of bytes copied through upgraded streams, by direction relative to the backend.",
++		}, []string{"direction"}),
++	}
++}
++
+ type metricsUpstreamsHealthyUpdater struct {
+ 	handler *Handler
+ }
+diff --git a/modules/caddyhttp/reverseproxy/metrics_test.go b/modules/caddyhttp/reverseproxy/metrics_test.go
+new file mode 100644
+index 00000000..c0ba3265
+--- /dev/null
++++ b/modules/caddyhttp/reverseproxy/metrics_test.go
+@@ -0,0 +1,205 @@
++package reverseproxy
++
++import (
++	"slices"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/prometheus/client_golang/prometheus"
++	"github.com/prometheus/client_golang/prometheus/testutil"
++	dto "github.com/prometheus/client_model/go"
++	"go.uber.org/zap"
++)
++
++// streamMetricValues is a snapshot of the stream metrics, to compare deltas
++// against since the collectors are shared by the whole package.
++type streamMetricValues struct {
++	active, closed, toBackend, fromBackend float64
++	durationCount                          uint64
++}
++
++func snapshotStreamMetrics(t *testing.T, result string) streamMetricValues {
++	t.Helper()
++	var m dto.Metric
++	if err := streamMetrics.duration.Write(&m); err != nil {
++		t.Fatalf("reading duration histogram: %v", err)
++	}
++	return streamMetricValues{
++		active:        testutil.ToFloat64(streamMetrics.active),
++		closed:        testutil.ToFloat64(streamMetrics.closed.WithLabelValues(result)),
++		toBackend:     testutil.ToFloat64(streamMetrics.bytes.WithLabelValues("to_backend")),
++		fromBackend:   testutil.ToFloat64(streamMetrics.bytes.WithLabelValues("from_backend")),
++		durationCount: m.GetHistogram().GetSampleCount(),
++	}
++}
++
++// settleStreamMetrics waits for the streams of earlier tests, which may
++// still be winding down in the background, to be done being accounted for.
++func settleStreamMetrics(t *testing.T) {
++	t.Helper()
++	snapshot := func() []float64 {
++		values := []float64{
++			testutil.ToFloat64(streamMetrics.active),
++			testutil.ToFloat64(streamMetrics.bytes.WithLabelValues("to_backend")),
++			testutil.ToFloat64(streamMetrics.bytes.WithLabelValues("from_backend")),
++		}
++		for _, result := range []string{streamResultCompleted, streamResultError, streamResultTimeout, streamResultClosed} {
++			values = append(values, testutil.ToFloat64(streamMetrics.closed.WithLabelValues(result)))
++		}
++		return values
++	}
++
++	last := snapshot()
++	stableSince := time.Now()
++	deadline := time.Now().Add(5 * time.Second)
++	for time.Since(stableSince) < 300*time.Millisecond && time.Now().Before(deadline) {
++		time.Sleep(10 * time.Millisecond)
++		if cur := snapshot(); !slices.Equal(cur, last) {
++			last, stableSince = cur, time.Now()
++		}
++	}
++}
++
++// TestStreamAccounting runs the accounting scenarios: a stream is counted
++// once however many close paths fire, and the first recorded result wins.
++func TestStreamAccounting(t *testing.T) {
++	t.Run("counts once", TestStreamAccountingCountsOnce)
++	t.Run("first result wins", TestStreamAccountingFirstResultWins)
++}
++
++func TestStreamAccountingCountsOnce(t *testing.T) {
++	settleStreamMetrics(t)
++	before := snapshotStreamMetrics(t, streamResultCompleted)
++
++	acct := newStreamAccounting()
++	if got := testutil.ToFloat64(streamMetrics.active); got != before.active+1 {
++		t.Fatalf("active gauge = %v, want %v", got, before.active+1)
++	}
++	acct.toBackend.Add(5)
++	acct.fromBackend.Add(7)
++
++	// many paths try to end the same stream concurrently
++	var wg sync.WaitGroup
++	firsts := make(chan string, 8)
++	for range 8 {
++		wg.Go(func() {
++			if result, first := acct.finish(streamResultCompleted); first {
++				firsts <- result
++			}
++		})
++	}
++	wg.Wait()
++	close(firsts)
++
++	var winners []string
++	for r := range firsts {
++		winners = append(winners, r)
++	}
++	if len(winners) != 1 || winners[0] != streamResultCompleted {
++		t.Fatalf("finish() reported first %v times (%v), want exactly once", len(winners), winners)
++	}
++
++	after := snapshotStreamMetrics(t, streamResultCompleted)
++	if after.active != before.active {
++		t.Errorf("active gauge = %v, want %v", after.active, before.active)
++	}
++	if after.closed != before.closed+1 {
++		t.Errorf("closed{completed} = %v, want %v", after.closed, before.closed+1)
++	}
++	if after.durationCount != before.durationCount+1 {
++		t.Errorf("duration samples = %d, want %d", after.durationCount, before.durationCount+1)
++	}
++	if after.toBackend != before.toBackend+5 {
++		t.Errorf("bytes to backend = %v, want %v", after.toBackend, before.toBackend+5)
++	}
++	if after.fromBackend != before.fromBackend+7 {
++		t.Errorf("bytes from backend = %v, want %v", after.fromBackend, before.fromBackend+7)
++	}
++
++	// a late attempt changes nothing
++	errorsBefore := snapshotStreamMetrics(t, streamResultError).closed
++	if _, first := acct.finish(streamResultError); first {
++		t.Error("finish() reported first for a stream that was already finished")
++	}
++	if got := snapshotStreamMetrics(t, streamResultError).closed; got != errorsBefore {
++		t.Errorf("closed{error} = %v, want %v", got, errorsBefore)
++	}
++}
++
++func TestStreamAccountingFirstResultWins(t *testing.T) {
++	settleStreamMetrics(t)
++	beforeClosed := snapshotStreamMetrics(t, streamResultClosed)
++	beforeError := snapshotStreamMetrics(t, streamResultError)
++
++	acct := newStreamAccounting()
++	// a reload closes the stream; the copiers then fail as a consequence
++	acct.setResult(streamResultClosed)
++	acct.setResult(streamResultError)
++	result, first := acct.finish(streamResultError)
++	if !first || result != streamResultClosed {
++		t.Fatalf("finish() = %q, %v; want %q, true", result, first, streamResultClosed)
++	}
++
++	if got := snapshotStreamMetrics(t, streamResultClosed).closed; got != beforeClosed.closed+1 {
++		t.Errorf("closed{closed} = %v, want %v", got, beforeClosed.closed+1)
++	}
++	if got := snapshotStreamMetrics(t, streamResultError).closed; got != beforeError.closed {
++		t.Errorf("closed{error} = %v, want %v", got, beforeError.closed)
++	}
++}
++
++func TestInitReverseProxyMetricsRegistersStreamMetrics(t *testing.T) {
++	h := &Handler{logger: zap.NewNop()}
++	registry := prometheus.NewRegistry()
++
++	// registering again, as every config reload does, must be fine
++	initReverseProxyMetrics(h, registry)
++	initReverseProxyMetrics(h, registry)
++
++	// vectors only appear once they have children
++	acct := newStreamAccounting()
++	acct.finish(streamResultCompleted)
++
++	families, err := registry.Gather()
++	if err != nil {
++		t.Fatalf("gathering: %v", err)
++	}
++	got := map[string]bool{}
++	for _, f := range families {
++		got[f.GetName()] = true
++	}
++	for _, name := range []string{
++		"caddy_reverse_proxy_streams_active",
++		"caddy_reverse_proxy_streams_closed_total",
++		"caddy_reverse_proxy_stream_duration_seconds",
++		"caddy_reverse_proxy_stream_bytes_total",
++	} {
++		if !got[name] {
++			t.Errorf("metric %s is not registered", name)
++		}
++	}
++}
++
++func TestInitReverseProxyMetricsPanicsOnConflict(t *testing.T) {
++	h := &Handler{logger: zap.NewNop()}
++	registry := prometheus.NewRegistry()
++
++	// same name as a stream metric but a different help string: a real
++	// conflict, not a repeated registration of the same collector
++	if err := registry.Register(prometheus.NewGauge(prometheus.GaugeOpts{
++		Namespace: "caddy",
++		Subsystem: "reverse_proxy",
++		Name:      "streams_active",
++		Help:      "something else",
++	})); err != nil {
++		t.Fatalf("registering conflicting gauge: %v", err)
++	}
++
++	defer func() {
++		if recover() == nil {
++			t.Fatal("expected a panic on a conflicting registration")
++		}
++	}()
++	initReverseProxyMetrics(h, registry)
++}
+diff --git a/modules/caddyhttp/reverseproxy/reverseproxy.go b/modules/caddyhttp/reverseproxy/reverseproxy.go
+index 0838c8be..4c1f7ade 100644
+--- a/modules/caddyhttp/reverseproxy/reverseproxy.go
++++ b/modules/caddyhttp/reverseproxy/reverseproxy.go
+@@ -199,6 +199,21 @@ type Handler struct {
+ 	// by the previous config closing. Default: no delay.
+ 	StreamCloseDelay caddy.Duration `json:"stream_close_delay,omitempty"`
+ 
++	// If true, upgraded streams (WebSockets, other Upgrade tunnels, HTTP/2
++	// extended CONNECT) are detached from the lifecycle of this handler's
++	// config: they survive a config reload, and are closed only if their
++	// upstream is no longer present in the new config (or when Caddy
++	// stops). stream_close_delay does not apply to detached streams.
++	// With dynamic upstreams (or placeholders in an upstream address), the
++	// upstream of a stream can't be checked against the new config, so its
++	// streams are retained while any such handler is in the config.
++	// Default: false, i.e. streams are closed when the config is
++	// unloaded, honoring stream_close_delay.
++	StreamDetached bool `json:"stream_detached,omitempty"`
++
++	// Configures logging of upgraded streams.
++	StreamLogs *StreamLogs `json:"stream_logs,omitempty"`
++
+ 	// If configured, rewrites the copy of the upstream request.
+ 	// Allows changing the request method and URI (path and query).
+ 	// Since the rewrite is applied to the copy, it does not persist
+@@ -263,6 +278,11 @@ type Handler struct {
+ 	connectionsCloseTimer *time.Timer
+ 	connectionsMu         *sync.Mutex
+ 
++	// upstreams this handler registered as live in the stream registry
++	registeredUpstreams []string
++	dynamicStreams      bool // upstreams are only known when serving requests
++	streamLogLevel      zapcore.Level
++
+ 	ctx    caddy.Context
+ 	logger *zap.Logger
+ 	events *caddyevents.App
+@@ -288,6 +308,13 @@ func (h *Handler) Provision(ctx caddy.Context) error {
+ 	h.connections = make(map[io.ReadWriteCloser]openConnection)
+ 	h.connectionsMu = new(sync.Mutex)
+ 
++	h.streamLogLevel = zapcore.DebugLevel
++	if h.StreamLogs != nil && h.StreamLogs.Level != "" {
++		if err := h.streamLogLevel.UnmarshalText([]byte(h.StreamLogs.Level)); err != nil {
++			return fmt.Errorf("invalid stream_logs level '%s': %v", h.StreamLogs.Level, err)
++		}
++	}
++
+ 	// warn about unsafe buffering config
+ 	if h.RequestBuffers == -1 || h.ResponseBuffers == -1 {
+ 		h.logger.Warn("UNLIMITED BUFFERING: buffering is enabled without any cap on buffer size, which can result in OOM crashes")
+@@ -453,12 +480,35 @@ func (h *Handler) Provision(ctx caddy.Context) error {
+ 	upstreamHealthyUpdater := newMetricsUpstreamsHealthyUpdater(h, ctx)
+ 	upstreamHealthyUpdater.init()
+ 
++	if h.StreamDetached {
++		h.dynamicStreams = h.DynamicUpstreams != nil
++		for _, u := range h.Upstreams {
++			h.registeredUpstreams = append(h.registeredUpstreams, u.Dial)
++			if strings.Contains(u.Dial, "{") {
++				h.dynamicStreams = true
++			}
++		}
++		if h.dynamicStreams {
++			h.registeredUpstreams = append(h.registeredUpstreams, dynamicLiveKey)
++		}
++		detachedStreams.addLive(h.registeredUpstreams)
++	}
++
+ 	return nil
+ }
+ 
+ // Cleanup cleans up the resources made by h.
+ func (h *Handler) Cleanup() error {
+-	err := h.cleanupConnections()
++	var err error
++	if h.StreamDetached {
++		// detached streams outlive this handler unless their upstream is
++		// gone from every handler that is still live
++		detachedStreams.removeLive(h.registeredUpstreams)
++		h.registeredUpstreams = nil
++		err = detachedStreams.closeOrphaned()
++	} else {
++		err = h.cleanupConnections()
++	}
+ 
+ 	// remove hosts from our config from the pool
+ 	for _, upstream := range h.Upstreams {
+@@ -514,6 +564,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
+ 			fmt.Errorf("preparing request for upstream round-trip: %v", err))
+ 	}
+ 
++	// upgraded streams are logged against the request as it came in
++	clonedReq = clonedReq.WithContext(context.WithValue(clonedReq.Context(), streamLogRequestCtxKey, r))
++
+ 	// websocket over http2 or http3 if extended connect is enabled, assuming backend doesn't support this, the request will be modified to http1.1 upgrade
+ 	// Both use the same upgrade mechanism: server advertizes extended connect support, and client sends the pseudo header :protocol in a CONNECT request
+ 	// The quic-go http3 implementation also puts :protocol in r.Proto for CONNECT requests (quic-go/http3/headers.go@70-72,185,203)
+diff --git a/modules/caddyhttp/reverseproxy/streaming.go b/modules/caddyhttp/reverseproxy/streaming.go
+index 4a2f39b2..4a015047 100644
+--- a/modules/caddyhttp/reverseproxy/streaming.go
++++ b/modules/caddyhttp/reverseproxy/streaming.go
+@@ -26,6 +26,7 @@ import (
+ 	"io"
+ 	weakrand "math/rand/v2"
+ 	"mime"
++	"net"
+ 	"net/http"
+ 	"sync"
+ 	"time"
+@@ -35,6 +36,7 @@ import (
+ 	"go.uber.org/zap/zapcore"
+ 	"golang.org/x/net/http/httpguts"
+ 
++	"github.com/caddyserver/caddy/v2"
+ 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+ )
+ 
+@@ -141,6 +143,26 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup,
+ 			}
+ 			return
+ 		}
++
++		// copy bytes on the raw connection rather than through
++		// a response recorder's wrapper
++		conn = unwrapHijacked(conn)
++	}
++
++	// the stream is established from here on
++	upstream := streamUpstream(res)
++	acct := newStreamAccounting()
++	result := streamResultCompleted
++	defer func() {
++		// both directions have ended by now, so the byte counts are final
++		wg.Wait()
++		if finalResult, first := acct.finish(result); first {
++			h.logStreamClose(req, upstream, finalResult, acct)
++		}
++	}()
++
++	if h.StreamLogs != nil && h.StreamLogs.SkipHandshake {
++		caddyhttp.SetVar(req.Context(), caddyhttp.LogSkipVar, true)
+ 	}
+ 
+ 	// adopted from https://github.com/golang/go/commit/8bcf2834afdf6a1f7937390903a41518715ef6f5
+@@ -159,6 +181,7 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup,
+ 	start := time.Now()
+ 	defer func() {
+ 		conn.Close()
++		backConn.Close()
+ 		if c := logger.Check(zapcore.DebugLevel, "connection closed"); c != nil {
+ 			c.Write(zap.Duration("duration", time.Since(start)))
+ 		}
+@@ -182,6 +205,7 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup,
+ 			}
+ 			return
+ 		}
++		acct.toBackend.Add(int64(len(data)))
+ 	}
+ 
+ 	// Ensure the hijacked client connection, and the new connection established
+@@ -199,16 +223,49 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup,
+ 		}
+ 		return nil
+ 	}
+-	deleteFrontConn := h.registerConnection(conn, gracefulClose(conn, false))
+-	deleteBackConn := h.registerConnection(backConn, gracefulClose(backConn, true))
+-	defer deleteFrontConn()
+-	defer deleteBackConn()
++	if h.StreamDetached {
++		// detached streams are not tied to the config that created them: they are
++		// closed when their upstream is gone from the live config(s), see Cleanup
++		closeStream := func() error {
++			acct.setResult(streamResultClosed)
++			var err error
++			if graceful := gracefulClose(conn, false); graceful != nil {
++				err = graceful()
++			}
++			if graceful := gracefulClose(backConn, true); graceful != nil && err == nil {
++				err = graceful()
++			}
++			conn.Close()
++			backConn.Close()
++			return err
++		}
++		remove, ok := detachedStreams.addStream(upstream, h.dynamicStreams, closeStream)
++		if !ok {
++			// the upstream left the config while the stream was being established
++			closeStream() //nolint:errcheck
++			return
++		}
++		defer remove()
++	} else {
++		frontGraceful := gracefulClose(conn, false)
++		deleteFrontConn := h.registerConnection(conn, func() error {
++			acct.setResult(streamResultClosed)
++			if frontGraceful != nil {
++				return frontGraceful()
++			}
++			return nil
++		})
++		deleteBackConn := h.registerConnection(backConn, gracefulClose(backConn, true))
++		defer deleteFrontConn()
++		defer deleteBackConn()
++	}
+ 
+ 	spc := switchProtocolCopier{
+ 		user:       conn,
+ 		backend:    backConn,
+ 		wg:         wg,
+ 		bufferSize: h.StreamBufferSize,
++		acct:       acct,
+ 	}
+ 
+ 	// setup the timeout if requested
+@@ -252,12 +309,18 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup,
+ 		select {
+ 		case err := <-errc:
+ 			if err != nil {
++				// a direction that ended cleanly on a connection with no write half
++				// to close is not a failure
++				if !errors.Is(err, errCopyDone) {
++					result = streamResultError
++				}
+ 				if c := logger.Check(zapcore.DebugLevel, "streaming error"); c != nil {
+ 					c.Write(zap.Error(err))
+ 				}
+ 				return
+ 			}
+ 		case time := <-timeoutc:
++			result = streamResultTimeout
+ 			if c := logger.Check(zapcore.DebugLevel, "stream timed out"); c != nil {
+ 				c.Write(zap.Time("timeout", time))
+ 			}
+@@ -676,6 +739,62 @@ type switchProtocolCopier struct {
+ 	user, backend io.ReadWriteCloser
+ 	wg            *sync.WaitGroup
+ 	bufferSize    int
++	acct          *streamAccounting // optional
++}
++
++// unwrapHijacked returns the raw connection behind a hijacked connection
++// that a response recorder wrapped to track its traffic, or conn itself.
++func unwrapHijacked(conn io.ReadWriteCloser) io.ReadWriteCloser {
++	if hc, ok := conn.(interface{ UnwrapHijacked() net.Conn }); ok {
++		return hc.UnwrapHijacked()
++	}
++	return conn
++}
++
++// streamUpstream returns the address of the upstream that res came from.
++func streamUpstream(res *http.Response) string {
++	if res.Request == nil {
++		return ""
++	}
++	di, ok := GetDialInfo(res.Request.Context())
++	if !ok || di.Upstream == nil {
++		return ""
++	}
++	return di.Upstream.Dial
++}
++
++// streamLogRequestCtxKey is the context key of the request as the handler
++// received it, which the stream logs are based on.
++const streamLogRequestCtxKey caddy.CtxKey = "reverse_proxy_stream_log_request"
++
++// streamLogRequest returns the request to base the stream's log entries on:
++// the request as the handler received it, if known, since the proxied request
++// may have had its host rewritten, which decides which logger is used.
++func streamLogRequest(req *http.Request) *http.Request {
++	if orig, ok := req.Context().Value(streamLogRequestCtxKey).(*http.Request); ok {
++		return orig
++	}
++	return req
++}
++
++// logStreamClose writes the stream close log to the access logger of the server.
++func (h *Handler) logStreamClose(req *http.Request, upstream, result string, acct *streamAccounting) {
++	server, ok := req.Context().Value(caddyhttp.ServerCtxKey).(*caddyhttp.Server)
++	if !ok {
++		return
++	}
++	logReq := streamLogRequest(req)
++	server.LogStream(logReq, h.streamLogLevel, "stream closed",
++		zap.Object("request", caddyhttp.LoggableHTTPRequest{
++			Request:              logReq,
++			ShouldLogCredentials: server.Logs != nil && server.Logs.ShouldLogCredentials,
++		}),
++		zap.String("upstream", upstream),
++		zap.String("result", result),
++		zap.Duration("duration", time.Since(acct.start)),
++		zap.Int64("bytes_to_backend", acct.toBackend.Load()),
++		zap.Int64("bytes_from_backend", acct.fromBackend.Load()),
++	)
+ }
+ 
+ // errCopyDone is reported by a direction that ended at a clean EOF on a
+@@ -685,7 +804,11 @@ var errCopyDone = errors.New("hijacked connection copy complete")
+ 
+ func (c switchProtocolCopier) copyFromBackend(errc chan<- error) {
+ 	defer c.wg.Done()
+-	if _, err := io.CopyBuffer(c.user, c.backend, c.buffer()); err != nil {
++	n, err := io.CopyBuffer(c.user, c.backend, c.buffer())
++	if c.acct != nil {
++		c.acct.fromBackend.Add(n)
++	}
++	if err != nil {
+ 		errc <- err
+ 		return
+ 	}
+@@ -701,7 +824,11 @@ func (c switchProtocolCopier) copyFromBackend(errc chan<- error) {
+ 
+ func (c switchProtocolCopier) copyToBackend(errc chan<- error) {
+ 	defer c.wg.Done()
+-	if _, err := io.CopyBuffer(c.backend, c.user, c.buffer()); err != nil {
++	n, err := io.CopyBuffer(c.backend, c.user, c.buffer())
++	if c.acct != nil {
++		c.acct.toBackend.Add(n)
++	}
++	if err != nil {
+ 		errc <- err
+ 		return
+ 	}
+diff --git a/modules/caddyhttp/reverseproxy/streaming_test.go b/modules/caddyhttp/reverseproxy/streaming_test.go
+index 627aac0a..672495f3 100644
+--- a/modules/caddyhttp/reverseproxy/streaming_test.go
++++ b/modules/caddyhttp/reverseproxy/streaming_test.go
+@@ -367,6 +367,478 @@ func TestHandlerUpgradedStreamHalfClose(t *testing.T) {
+ 	}
+ }
+ 
++// upgradedStream is an upgraded stream through a Handler, established
++// between a real client connection and a real backend connection.
++type upgradedStream struct {
++	h        *Handler
++	upstream string
++	cli      *net.TCPConn
++	srv      *net.TCPConn
++
++	// br reads what the client receives
++	br *bufio.Reader
++	// done is closed when the handler returned
++	done chan struct{}
++	// req is the request as the handler saw it
++	req *http.Request
++	rec caddyhttp.ResponseRecorder
++}
++
++const upgradedStreamTimeout = 10 * time.Second
++
++// startUpgradedStream establishes a stream through a Handler. configure
++// is called with the handler and the address of the backend before the
++// client connects. If recorded is true, the handler is given a response
++// recorder like the one the server uses for access logging.
++func startUpgradedStream(t *testing.T, recorded bool, configure func(h *Handler, upstream string)) *upgradedStream {
++	t.Helper()
++	s := &upgradedStream{done: make(chan struct{})}
++
++	srvc := make(chan *net.TCPConn, 1)
++	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		conn, _, err := http.NewResponseController(w).Hijack()
++		if err != nil {
++			t.Errorf("backend hijack failed: %v", err)
++			return
++		}
++		tcp := conn.(*net.TCPConn)
++		if _, err := io.WriteString(tcp, "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n"); err != nil {
++			tcp.Close()
++			t.Errorf("backend upgrade write failed: %v", err)
++			return
++		}
++		srvc <- tcp
++	}))
++	t.Cleanup(backend.Close)
++
++	s.upstream = backend.Listener.Addr().String()
++	s.h = minimalHandler(0, &Upstream{Host: new(Host), Dial: s.upstream})
++	s.h.connections = make(map[io.ReadWriteCloser]openConnection)
++	s.h.connectionsMu = new(sync.Mutex)
++	if configure != nil {
++		configure(s.h, s.upstream)
++	}
++
++	frontend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		defer close(s.done)
++		r = r.WithContext(context.WithoutCancel(r.Context()))
++		s.req = prepareTestRequest(r)
++		if recorded {
++			s.rec = caddyhttp.NewResponseRecorder(w, nil, nil)
++			w = s.rec
++		}
++		_ = s.h.ServeHTTP(w, s.req, caddyhttp.HandlerFunc(func(http.ResponseWriter, *http.Request) error {
++			return nil
++		}))
++	}))
++	t.Cleanup(frontend.Close)
++
++	frontendURL, err := url.Parse(frontend.URL)
++	if err != nil {
++		t.Fatalf("failed to parse frontend URL: %v", err)
++	}
++	addr, err := net.ResolveTCPAddr("tcp", frontendURL.Host)
++	if err != nil {
++		t.Fatalf("failed to resolve TCP address: %v", err)
++	}
++	s.cli, err = net.DialTCP("tcp", nil, addr)
++	if err != nil {
++		t.Fatalf("failed to dial frontend: %v", err)
++	}
++	t.Cleanup(func() { s.cli.Close() })
++
++	req, _ := http.NewRequest(http.MethodGet, frontend.URL, nil)
++	req.Header.Set("Connection", "Upgrade")
++	req.Header.Set("Upgrade", "websocket")
++	if err := req.Write(s.cli); err != nil {
++		t.Fatalf("failed to write upgrade request: %v", err)
++	}
++	s.br = bufio.NewReader(s.cli)
++	resp, err := http.ReadResponse(s.br, &http.Request{Method: http.MethodGet})
++	if err != nil {
++		t.Fatalf("failed to read upgrade response: %v", err)
++	}
++	if resp.StatusCode != http.StatusSwitchingProtocols {
++		t.Fatalf("status = %d, want 101", resp.StatusCode)
++	}
++
++	select {
++	case s.srv = <-srvc:
++	case <-time.After(upgradedStreamTimeout):
++		t.Fatal("timed out waiting for the backend connection")
++	}
++	t.Cleanup(func() { s.srv.Close() })
++	return s
++}
++
++// roundTrip passes a message in each direction.
++func (s *upgradedStream) roundTrip(t *testing.T, toBackend, fromBackend string) {
++	t.Helper()
++	read := func(r io.Reader, want string) {
++		t.Helper()
++		s.cli.SetReadDeadline(time.Now().Add(upgradedStreamTimeout))
++		s.srv.SetReadDeadline(time.Now().Add(upgradedStreamTimeout))
++		b := make([]byte, len(want))
++		if _, err := io.ReadFull(r, b); err != nil {
++			t.Fatalf("failed to read %q: %v", want, err)
++		}
++		if string(b) != want {
++			t.Fatalf("read %q, want %q", b, want)
++		}
++	}
++	if _, err := s.cli.Write([]byte(toBackend)); err != nil {
++		t.Fatalf("client write: %v", err)
++	}
++	read(s.srv, toBackend)
++	if _, err := s.srv.Write([]byte(fromBackend)); err != nil {
++		t.Fatalf("backend write: %v", err)
++	}
++	read(s.br, fromBackend)
++}
++
++func (s *upgradedStream) waitDone(t *testing.T) {
++	t.Helper()
++	select {
++	case <-s.done:
++	case <-time.After(upgradedStreamTimeout):
++		t.Fatal("timed out waiting for the handler to return")
++	}
++}
++
++func (s *upgradedStream) assertStillOpen(t *testing.T) {
++	t.Helper()
++	select {
++	case <-s.done:
++		t.Fatal("the handler returned: the stream was closed")
++	default:
++	}
++	s.roundTrip(t, "again", "still here")
++}
++
++// A stream that ends cleanly is accounted once, with its bytes in each direction.
++func TestUpgradedStreamAccountsCompletedStream(t *testing.T) {
++	settleStreamMetrics(t)
++	before := snapshotStreamMetrics(t, streamResultCompleted)
++
++	s := startUpgradedStream(t, false, nil)
++	// the client sees the 101 before the stream is accounted for
++	deadline := time.Now().Add(upgradedStreamTimeout)
++	for snapshotStreamMetrics(t, streamResultCompleted).active != before.active+1 {
++		if time.Now().After(deadline) {
++			t.Fatalf("active streams = %v, want %v", snapshotStreamMetrics(t, streamResultCompleted).active, before.active+1)
++		}
++		time.Sleep(5 * time.Millisecond)
++	}
++	s.roundTrip(t, "ping", "pong!!")
++
++	s.cli.Close()
++	s.srv.Close()
++	s.waitDone(t)
++
++	after := snapshotStreamMetrics(t, streamResultCompleted)
++	if after.active != before.active {
++		t.Errorf("active streams = %v, want %v", after.active, before.active)
++	}
++	if after.closed != before.closed+1 {
++		t.Errorf("closed{completed} = %v, want %v", after.closed, before.closed+1)
++	}
++	if after.durationCount != before.durationCount+1 {
++		t.Errorf("duration samples = %d, want %d", after.durationCount, before.durationCount+1)
++	}
++	if after.toBackend != before.toBackend+4 {
++		t.Errorf("bytes to backend = %v, want %v", after.toBackend, before.toBackend+4)
++	}
++	if after.fromBackend != before.fromBackend+6 {
++		t.Errorf("bytes from backend = %v, want %v", after.fromBackend, before.fromBackend+6)
++	}
++	if got := len(s.h.connections); got != 0 {
++		t.Errorf("%d connections still registered after the stream ended", got)
++	}
++}
++
++// A connection reset ends the stream as an error.
++func TestUpgradedStreamAccountsErrorStream(t *testing.T) {
++	settleStreamMetrics(t)
++	before := snapshotStreamMetrics(t, streamResultError)
++
++	s := startUpgradedStream(t, false, nil)
++	s.roundTrip(t, "ping", "pong!!")
++
++	s.cli.SetLinger(0) // closing sends a reset
++	s.cli.Close()
++	s.waitDone(t)
++
++	after := snapshotStreamMetrics(t, streamResultError)
++	if after.closed != before.closed+1 {
++		t.Errorf("closed{error} = %v, want %v", after.closed, before.closed+1)
++	}
++	if after.active != before.active {
++		t.Errorf("active streams = %v, want %v", after.active, before.active)
++	}
++}
++
++func TestUpgradedStreamAccountsTimeout(t *testing.T) {
++	settleStreamMetrics(t)
++	before := snapshotStreamMetrics(t, streamResultTimeout)
++
++	s := startUpgradedStream(t, false, func(h *Handler, _ string) {
++		h.StreamTimeout = 200_000_000 // 200ms
++	})
++	s.waitDone(t)
++
++	after := snapshotStreamMetrics(t, streamResultTimeout)
++	if after.closed != before.closed+1 {
++		t.Errorf("closed{timeout} = %v, want %v", after.closed, before.closed+1)
++	}
++}
++
++// Without stream_detached, closing the handler's connections (what Cleanup
++// does on reload) ends the stream, and that is what it is accounted as.
++func TestUpgradedStreamClosedWithConfig(t *testing.T) {
++	settleStreamMetrics(t)
++	before := snapshotStreamMetrics(t, streamResultClosed)
++
++	s := startUpgradedStream(t, false, nil)
++	s.roundTrip(t, "ping", "pong!!")
++	if got := len(s.h.connections); got != 2 {
++		t.Fatalf("registered connections = %d, want 2", got)
++	}
++
++	// the config is unloaded
++	if err := s.h.Cleanup(); err != nil {
++		t.Logf("Cleanup: %v", err)
++	}
++	s.waitDone(t)
++
++	after := snapshotStreamMetrics(t, streamResultClosed)
++	if after.closed != before.closed+1 {
++		t.Errorf("closed{closed} = %v, want %v", after.closed, before.closed+1)
++	}
++}
++
++// With stream_close_delay the stream outlives the config, until the delay is over.
++func TestUpgradedStreamClosedAfterDelay(t *testing.T) {
++	s := startUpgradedStream(t, false, func(h *Handler, _ string) {
++		h.StreamCloseDelay = caddy.Duration(500 * time.Millisecond)
++	})
++	s.roundTrip(t, "ping", "pong!!")
++
++	start := time.Now()
++	if err := s.h.Cleanup(); err != nil {
++		t.Fatalf("Cleanup: %v", err)
++	}
++	s.assertStillOpen(t)
++	s.waitDone(t)
++	if elapsed := time.Since(start); elapsed < 400*time.Millisecond {
++		t.Errorf("the stream was closed after %v, before the delay", elapsed)
++	}
++}
++
++// Detached streams are not registered with the handler, and a reload
++// that keeps their upstream leaves them open; only removing the upstream
++// closes them.
++func TestUpgradedStreamDetached(t *testing.T) {
++	settleStreamMetrics(t)
++	before := snapshotStreamMetrics(t, streamResultClosed)
++
++	s := startUpgradedStream(t, false, func(h *Handler, upstream string) {
++		h.StreamDetached = true
++		// what Provision does
++		h.registeredUpstreams = []string{upstream}
++		detachedStreams.addLive(h.registeredUpstreams)
++		t.Cleanup(func() { detachedStreams.removeLive([]string{upstream}) })
++	})
++	s.roundTrip(t, "ping", "pong!!")
++
++	if got := len(s.h.connections); got != 0 {
++		t.Errorf("a detached stream registered %d connections with the handler", got)
++	}
++	if got := detachedStreams.count(); got < 1 {
++		t.Fatalf("registry count = %d, want the stream to be registered", got)
++	}
++
++	// reload: the new config has a handler for the same upstream, then the old one is cleaned up
++	detachedStreams.addLive([]string{s.upstream})
++	if err := s.h.Cleanup(); err != nil {
++		t.Fatalf("Cleanup: %v", err)
++	}
++	s.assertStillOpen(t)
++
++	// reload again: the upstream is gone from the new config
++	detachedStreams.removeLive([]string{s.upstream})
++	if err := detachedStreams.closeOrphaned(); err != nil {
++		t.Logf("closeOrphaned: %v", err)
++	}
++	s.waitDone(t)
++
++	after := snapshotStreamMetrics(t, streamResultClosed)
++	if after.closed != before.closed+1 {
++		t.Errorf("closed{closed} = %v, want %v", after.closed, before.closed+1)
++	}
++}
++
++// With dynamic upstreams the address of the upstream is never in the config,
++// yet a detached stream must not be closed for that, and survives a reload.
++func TestUpgradedStreamDetachedDynamicUpstreams(t *testing.T) {
++	s := startUpgradedStream(t, false, func(h *Handler, _ string) {
++		h.StreamDetached = true
++		h.dynamicStreams = true
++		// what Provision does for a handler with dynamic upstreams
++		h.registeredUpstreams = []string{dynamicLiveKey}
++		detachedStreams.addLive(h.registeredUpstreams)
++		t.Cleanup(func() { detachedStreams.removeLive([]string{dynamicLiveKey}) })
++	})
++	s.roundTrip(t, "ping", "pong!!")
++
++	// reload: the new config has a dynamic handler too
++	detachedStreams.addLive([]string{dynamicLiveKey})
++	if err := s.h.Cleanup(); err != nil {
++		t.Fatalf("Cleanup: %v", err)
++	}
++	s.assertStillOpen(t)
++
++	// and then there is none
++	detachedStreams.removeLive([]string{dynamicLiveKey})
++	_ = detachedStreams.closeOrphaned()
++	s.waitDone(t)
++}
++
++// A stream to an upstream that left the config while it was being established is closed.
++func TestUpgradedStreamDetachedUpstreamNotLive(t *testing.T) {
++	settleStreamMetrics(t)
++	before := snapshotStreamMetrics(t, streamResultClosed)
++
++	s := startUpgradedStream(t, false, func(h *Handler, _ string) {
++		h.StreamDetached = true
++	})
++	s.waitDone(t)
++
++	after := snapshotStreamMetrics(t, streamResultClosed)
++	if after.closed != before.closed+1 {
++		t.Errorf("closed{closed} = %v, want %v", after.closed, before.closed+1)
++	}
++	if after.active != before.active {
++		t.Errorf("active streams = %v, want %v", after.active, before.active)
++	}
++}
++
++// The proxy copies on the raw connection: the traffic of the stream is not
++// counted by the response recorder (which would be wrong for the access log
++// size), and the recorder neither buffers nor writes after the hijack.
++func TestUpgradedStreamBypassesRecorder(t *testing.T) {
++	s := startUpgradedStream(t, true, nil)
++	s.roundTrip(t, "ping", "pong!!")
++
++	if got := s.rec.Size(); got != 0 {
++		t.Errorf("recorder size = %d, want 0: the stream was copied through the recorder", got)
++	}
++	if got := s.rec.Status(); got != http.StatusSwitchingProtocols {
++		t.Errorf("recorder status = %d, want 101", got)
++	}
++	if s.rec.Buffered() {
++		t.Error("the recorder buffers a hijacked response")
++	}
++
++	s.cli.Close()
++	s.srv.Close()
++	s.waitDone(t)
++}
++
++func TestUpgradedStreamSkipHandshake(t *testing.T) {
++	for _, tc := range []struct {
++		name string
++		logs *StreamLogs
++		want bool
++	}{
++		{name: "default", logs: nil, want: false},
++		{name: "logs without skip", logs: &StreamLogs{Level: "info"}, want: false},
++		{name: "skip handshake", logs: &StreamLogs{SkipHandshake: true}, want: true},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			s := startUpgradedStream(t, false, func(h *Handler, _ string) {
++				h.StreamLogs = tc.logs
++			})
++			s.roundTrip(t, "ping", "pong!!")
++			s.cli.Close()
++			s.srv.Close()
++			s.waitDone(t)
++
++			skipped, _ := caddyhttp.GetVar(s.req.Context(), caddyhttp.LogSkipVar).(bool)
++			if skipped != tc.want {
++				t.Errorf("access log skipped = %v, want %v", skipped, tc.want)
++			}
++		})
++	}
++}
++
++type unwrappableConn struct {
++	nopReadWriteCloser
++	raw net.Conn
++}
++
++func (u unwrappableConn) UnwrapHijacked() net.Conn { return u.raw }
++
++func TestUnwrapHijacked(t *testing.T) {
++	plain := nopReadWriteCloser{}
++	if got := unwrapHijacked(plain); got != io.ReadWriteCloser(plain) {
++		t.Errorf("unwrapHijacked(plain) = %v, want the same connection", got)
++	}
++
++	c1, c2 := net.Pipe()
++	defer c1.Close()
++	defer c2.Close()
++	if got := unwrapHijacked(unwrappableConn{raw: c1}); got != io.ReadWriteCloser(c1) {
++		t.Errorf("unwrapHijacked(wrapped) = %v, want the raw connection", got)
++	}
++}
++
++func TestStreamUpstream(t *testing.T) {
++	if got := streamUpstream(&http.Response{}); got != "" {
++		t.Errorf("no request: got %q, want empty", got)
++	}
++
++	noDialInfo, _ := http.NewRequest(http.MethodGet, "http://example.com/", nil)
++	if got := streamUpstream(&http.Response{Request: noDialInfo}); got != "" {
++		t.Errorf("no dial info: got %q, want empty", got)
++	}
++
++	withNil := noDialInfo.WithContext(context.WithValue(noDialInfo.Context(), dialInfoCtxKey, DialInfo{}))
++	if got := streamUpstream(&http.Response{Request: withNil}); got != "" {
++		t.Errorf("dial info without upstream: got %q, want empty", got)
++	}
++
++	with := noDialInfo.WithContext(context.WithValue(noDialInfo.Context(), dialInfoCtxKey, DialInfo{Upstream: &Upstream{Dial: "backend:80"}}))
++	if got := streamUpstream(&http.Response{Request: with}); got != "backend:80" {
++		t.Errorf("got %q, want backend:80", got)
++	}
++}
++
++func TestStreamLogRequest(t *testing.T) {
++	req, _ := http.NewRequest(http.MethodGet, "http://rewritten.example/", nil)
++	if got := streamLogRequest(req); got != req {
++		t.Error("without an original request, the request itself should be used")
++	}
++
++	orig := &http.Request{Method: http.MethodGet, Host: "original.example"}
++	req = req.WithContext(context.WithValue(req.Context(), streamLogRequestCtxKey, orig))
++	if got := streamLogRequest(req); got != orig {
++		t.Errorf("host = %q, want original.example", got.Host)
++	}
++}
++
++func TestLogStreamCloseWithoutAccessLog(t *testing.T) {
++	h := &Handler{streamLogLevel: -1}
++	acct := newStreamAccounting()
++	defer acct.finish(streamResultCompleted)
++
++	// no server in the context: nothing to log to, and no panic
++	req, _ := http.NewRequest(http.MethodGet, "http://example.com/", nil)
++	h.logStreamClose(req, "backend:80", streamResultCompleted, acct)
++
++	// a server without access logging
++	h.logStreamClose(prepareTestRequest(req), "backend:80", streamResultCompleted, acct)
++}
++
+ // A response carrying the Incremental header field (RFC 10036) must be
+ // forwarded without buffering, whatever its Content-Type and Content-Length.
+ func TestFlushIntervalIncremental(t *testing.T) {
+diff --git a/modules/caddyhttp/reverseproxy/streams.go b/modules/caddyhttp/reverseproxy/streams.go
+new file mode 100644
+index 00000000..8ab6b17a
+--- /dev/null
++++ b/modules/caddyhttp/reverseproxy/streams.go
+@@ -0,0 +1,209 @@
++// Copyright 2015 Matthew Holt and The Caddy Authors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package reverseproxy
++
++import (
++	"sync"
++	"sync/atomic"
++	"time"
++)
++
++// StreamLogs configures the logging of upgraded streams, such as
++// WebSockets. When the server has access logging enabled, a log entry
++// is written to the access logger when a stream is closed.
++type StreamLogs struct {
++	// If true, the access log entry of the request that upgraded to
++	// a stream (the handshake) is not written. Stream close logs are
++	// not affected. Default: the handshake is logged.
++	SkipHandshake bool `json:"skip_handshake,omitempty"`
++
++	// The level of the stream close log entries: debug, info, warn
++	// or error. Default: debug.
++	Level string `json:"level,omitempty"`
++}
++
++// Results with which a stream can end.
++const (
++	streamResultCompleted = "completed" // both directions ended cleanly
++	streamResultError     = "error"     // a copy failed, e.g. a peer went away
++	streamResultTimeout   = "timeout"   // stream_timeout elapsed
++	streamResultClosed    = "closed"    // closed by a config reload or shutdown
++)
++
++// streamAccounting accounts for a single upgraded stream in the stream
++// metrics. However many paths try to end the stream, it is counted once.
++type streamAccounting struct {
++	start        time.Time
++	toBackend    atomic.Int64
++	fromBackend  atomic.Int64
++	mu           sync.Mutex
++	result       string
++	finishedOnce sync.Once
++}
++
++// newStreamAccounting starts accounting for a stream that was just established.
++func newStreamAccounting() *streamAccounting {
++	streamMetrics.active.Inc()
++	return &streamAccounting{start: time.Now()}
++}
++
++// setResult records why the stream is ending. Only the first
++// result is kept, so the cause of the end wins over its effects.
++func (s *streamAccounting) setResult(result string) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if s.result == "" {
++		s.result = result
++	}
++}
++
++// finish ends the accounting of the stream, using result unless an earlier
++// one was recorded with setResult. Only the first call has an effect: it
++// updates the metrics and reports true along with the final result.
++func (s *streamAccounting) finish(result string) (string, bool) {
++	var first bool
++	s.finishedOnce.Do(func() {
++		first = true
++		s.setResult(result)
++		s.mu.Lock()
++		result = s.result
++		s.mu.Unlock()
++
++		streamMetrics.active.Dec()
++		streamMetrics.closed.WithLabelValues(result).Inc()
++		streamMetrics.duration.Observe(time.Since(s.start).Seconds())
++		streamMetrics.bytes.WithLabelValues("to_backend").Add(float64(s.toBackend.Load()))
++		streamMetrics.bytes.WithLabelValues("from_backend").Add(float64(s.fromBackend.Load()))
++	})
++	if !first {
++		return "", false
++	}
++	return result, true
++}
++
++// streamRegistry tracks the upgraded streams that are detached from the
++// lifecycle of the config that created them (stream_detached), as well as
++// the upstreams of the handlers that are currently live. A detached stream
++// stays open until its upstream is no longer live.
++type streamRegistry struct {
++	mu      sync.Mutex
++	live    map[string]int // upstream -> number of live handlers using it
++	streams map[*detachedStream]struct{}
++}
++
++type detachedStream struct {
++	upstream string
++	dynamic  bool
++	close    func() error
++}
++
++// dynamicLiveKey marks a live handler whose upstreams are only known when
++// requests are served (dynamic upstreams, or placeholders in a dial address).
++// Streams started by such handlers stay open while any such handler is live.
++const dynamicLiveKey = "\x00dynamic"
++
++// detachedStreams is shared by all handlers, since the handlers of an old
++// config are cleaned up while the streams they started are still running.
++var detachedStreams = newStreamRegistry()
++
++func newStreamRegistry() *streamRegistry {
++	return &streamRegistry{
++		live:    make(map[string]int),
++		streams: make(map[*detachedStream]struct{}),
++	}
++}
++
++// addLive marks the upstreams as used by a live handler.
++func (r *streamRegistry) addLive(upstreams []string) {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	for _, u := range upstreams {
++		r.live[u]++
++	}
++}
++
++// removeLive marks the upstreams as no longer used by a handler.
++func (r *streamRegistry) removeLive(upstreams []string) {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	for _, u := range upstreams {
++		if r.live[u] <= 1 {
++			delete(r.live, u)
++			continue
++		}
++		r.live[u]--
++	}
++}
++
++// add registers a stream to upstream that is closed with closeFn when the
++// upstream is no longer live. It returns a function that unregisters the
++// stream, or false if the upstream is not live anymore, in which case the
++// stream was not registered and must be closed by the caller.
++func (r *streamRegistry) add(upstream string, closeFn func() error) (remove func(), ok bool) {
++	return r.addStream(upstream, false, closeFn)
++}
++
++// addStream is like add. A dynamic stream, started by a handler whose upstreams
++// are not known up front, is also kept while a dynamic handler is live.
++func (r *streamRegistry) addStream(upstream string, dynamic bool, closeFn func() error) (remove func(), ok bool) {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	if !r.isLive(upstream, dynamic) {
++		return nil, false
++	}
++	ds := &detachedStream{upstream: upstream, dynamic: dynamic, close: closeFn}
++	r.streams[ds] = struct{}{}
++	return func() {
++		r.mu.Lock()
++		delete(r.streams, ds)
++		r.mu.Unlock()
++	}, true
++}
++
++// closeOrphaned closes the streams whose upstream is not live anymore,
++// and returns the first error encountered. The streams to retained
++// upstreams are left alone.
++func (r *streamRegistry) closeOrphaned() error {
++	r.mu.Lock()
++	var orphaned []*detachedStream
++	for ds := range r.streams {
++		if !r.isLive(ds.upstream, ds.dynamic) {
++			orphaned = append(orphaned, ds)
++			delete(r.streams, ds)
++		}
++	}
++	r.mu.Unlock()
++
++	// closing may block (graceful close writes to the connections), so don't hold the lock
++	var err error
++	for _, ds := range orphaned {
++		if closeErr := ds.close(); closeErr != nil && err == nil {
++			err = closeErr
++		}
++	}
++	return err
++}
++
++// isLive reports whether a stream to upstream may stay open. The lock must be held.
++func (r *streamRegistry) isLive(upstream string, dynamic bool) bool {
++	return r.live[upstream] > 0 || (dynamic && r.live[dynamicLiveKey] > 0)
++}
++
++// count returns the number of registered streams.
++func (r *streamRegistry) count() int {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	return len(r.streams)
++}
+diff --git a/modules/caddyhttp/reverseproxy/streams_test.go b/modules/caddyhttp/reverseproxy/streams_test.go
+new file mode 100644
+index 00000000..681ba8a5
+--- /dev/null
++++ b/modules/caddyhttp/reverseproxy/streams_test.go
+@@ -0,0 +1,196 @@
++package reverseproxy
++
++import (
++	"errors"
++	"sync"
++	"sync/atomic"
++	"testing"
++)
++
++// TestStreamRegistry runs the registry scenarios: live upstream counting,
++// registration, and closing only the streams whose upstream is gone.
++func TestStreamRegistry(t *testing.T) {
++	t.Run("live counting", TestStreamRegistryLiveCounting)
++	t.Run("add requires live upstream", TestStreamRegistryAddRequiresLiveUpstream)
++	t.Run("close orphaned", TestStreamRegistryCloseOrphaned)
++	t.Run("first error", TestStreamRegistryCloseOrphanedReportsFirstError)
++	t.Run("concurrent", TestStreamRegistryConcurrent)
++}
++
++func TestStreamRegistryLiveCounting(t *testing.T) {
++	r := newStreamRegistry()
++
++	r.addLive([]string{"a:1", "b:2"})
++	r.addLive([]string{"a:1"})
++	if got := r.live["a:1"]; got != 2 {
++		t.Fatalf("live[a:1] = %d, want 2", got)
++	}
++
++	// one of two handlers using the upstream went away
++	r.removeLive([]string{"a:1"})
++	if got := r.live["a:1"]; got != 1 {
++		t.Fatalf("live[a:1] = %d, want 1", got)
++	}
++
++	// the last ones went away
++	r.removeLive([]string{"a:1", "b:2"})
++	if len(r.live) != 0 {
++		t.Fatalf("live = %v, want empty", r.live)
++	}
++
++	// removing what is not live is harmless
++	r.removeLive([]string{"c:3"})
++	if len(r.live) != 0 {
++		t.Fatalf("live = %v, want empty", r.live)
++	}
++}
++
++func TestStreamRegistryAddRequiresLiveUpstream(t *testing.T) {
++	r := newStreamRegistry()
++
++	if remove, ok := r.add("a:1", func() error { return nil }); ok || remove != nil {
++		t.Fatal("add() registered a stream to an upstream that is not live")
++	}
++	if got := r.count(); got != 0 {
++		t.Fatalf("count() = %d, want 0", got)
++	}
++
++	r.addLive([]string{"a:1"})
++	remove, ok := r.add("a:1", func() error { return nil })
++	if !ok {
++		t.Fatal("add() refused a stream to a live upstream")
++	}
++	if got := r.count(); got != 1 {
++		t.Fatalf("count() = %d, want 1", got)
++	}
++	remove()
++	if got := r.count(); got != 0 {
++		t.Fatalf("count() after remove = %d, want 0", got)
++	}
++}
++
++func TestStreamRegistryCloseOrphaned(t *testing.T) {
++	r := newStreamRegistry()
++	r.addLive([]string{"kept:1", "gone:2"})
++
++	var keptClosed, goneClosed atomic.Int32
++	if _, ok := r.add("kept:1", func() error { keptClosed.Add(1); return nil }); !ok {
++		t.Fatal("add(kept) failed")
++	}
++	if _, ok := r.add("gone:2", func() error { goneClosed.Add(1); return nil }); !ok {
++		t.Fatal("add(gone) failed")
++	}
++	if _, ok := r.add("gone:2", func() error { goneClosed.Add(1); return nil }); !ok {
++		t.Fatal("add(gone) failed")
++	}
++
++	// nothing is orphaned yet
++	if err := r.closeOrphaned(); err != nil {
++		t.Fatalf("closeOrphaned() = %v", err)
++	}
++	if keptClosed.Load() != 0 || goneClosed.Load() != 0 {
++		t.Fatal("closeOrphaned() closed streams whose upstream is still live")
++	}
++
++	// the new config no longer has gone:2
++	r.removeLive([]string{"gone:2"})
++	if err := r.closeOrphaned(); err != nil {
++		t.Fatalf("closeOrphaned() = %v", err)
++	}
++	if got := goneClosed.Load(); got != 2 {
++		t.Fatalf("streams to the removed upstream closed = %d, want 2", got)
++	}
++	if got := keptClosed.Load(); got != 0 {
++		t.Fatalf("stream to the retained upstream closed = %d, want 0", got)
++	}
++	if got := r.count(); got != 1 {
++		t.Fatalf("count() = %d, want 1", got)
++	}
++
++	// closing again must not close the same streams twice
++	if err := r.closeOrphaned(); err != nil {
++		t.Fatalf("closeOrphaned() = %v", err)
++	}
++	if got := goneClosed.Load(); got != 2 {
++		t.Fatalf("streams closed twice: %d", got)
++	}
++}
++
++func TestStreamRegistryCloseOrphanedReportsFirstError(t *testing.T) {
++	r := newStreamRegistry()
++	r.addLive([]string{"a:1"})
++
++	first := errors.New("first")
++	var closed atomic.Int32
++	// both fail: the error of whichever runs first is kept, and all are closed
++	for range 2 {
++		if _, ok := r.add("a:1", func() error { closed.Add(1); return first }); !ok {
++			t.Fatal("add() failed")
++		}
++	}
++	r.removeLive([]string{"a:1"})
++
++	if err := r.closeOrphaned(); !errors.Is(err, first) {
++		t.Fatalf("closeOrphaned() = %v, want %v", err, first)
++	}
++	if got := closed.Load(); got != 2 {
++		t.Fatalf("closed = %d, want 2 (an error must not stop the others)", got)
++	}
++}
++
++// Streams of handlers with dynamic upstreams can't be matched to a static
++// upstream; they stay while a dynamic handler is live.
++func TestStreamRegistryDynamicStreams(t *testing.T) {
++	r := newStreamRegistry()
++
++	// no dynamic handler: refused, like any upstream that is not live
++	if _, ok := r.addStream("dyn:1", true, func() error { return nil }); ok {
++		t.Fatal("a dynamic stream was registered without a live dynamic handler")
++	}
++
++	r.addLive([]string{dynamicLiveKey})
++	var closed, staticClosed atomic.Int32
++	if _, ok := r.addStream("dyn:1", true, func() error { closed.Add(1); return nil }); !ok {
++		t.Fatal("a dynamic stream was refused although a dynamic handler is live")
++	}
++	// a static stream to an address that is not live is not helped by the dynamic handler
++	if _, ok := r.addStream("dyn:1", false, func() error { staticClosed.Add(1); return nil }); ok {
++		t.Fatal("a static stream was registered to an upstream that is not live")
++	}
++
++	// a reload keeps a dynamic handler
++	r.addLive([]string{dynamicLiveKey})
++	r.removeLive([]string{dynamicLiveKey})
++	if err := r.closeOrphaned(); err != nil || closed.Load() != 0 {
++		t.Fatalf("closeOrphaned() = %v, closed = %d; want the dynamic stream kept", err, closed.Load())
++	}
++
++	// the last dynamic handler is gone
++	r.removeLive([]string{dynamicLiveKey})
++	if err := r.closeOrphaned(); err != nil || closed.Load() != 1 {
++		t.Fatalf("closeOrphaned() = %v, closed = %d; want the dynamic stream closed", err, closed.Load())
++	}
++}
++
++func TestStreamRegistryConcurrent(t *testing.T) {
++	r := newStreamRegistry()
++	r.addLive([]string{"a:1"})
++
++	var wg sync.WaitGroup
++	for range 20 {
++		wg.Go(func() {
++			if remove, ok := r.add("a:1", func() error { return nil }); ok {
++				remove()
++			}
++		})
++	}
++	wg.Go(func() {
++		r.removeLive([]string{"a:1"})
++		_ = r.closeOrphaned()
++	})
++	wg.Wait()
++
++	if got := r.count(); got != 0 {
++		t.Fatalf("count() = %d, want 0", got)
++	}
++}
+diff --git a/modules/caddyhttp/server.go b/modules/caddyhttp/server.go
+index 72c6679f..c85a3d6f 100644
+--- a/modules/caddyhttp/server.go
++++ b/modules/caddyhttp/server.go
+@@ -1211,6 +1211,25 @@ func (s *Server) shouldLogRequest(r *http.Request) bool {
+ 	return !s.Logs.SkipUnmappedHosts
+ }
+ 
++// LogStream writes an entry about an upgraded stream (such as a WebSocket)
++// that was established by r to the same loggers that the access log of r
++// goes to, honoring the server's per-host logger names and skipped hosts.
++// It reports whether r is eligible for access logging at all. Unlike the
++// access log entry of the request, it is not affected by the request being
++// flagged to skip logging, so that streams can be logged after their
++// handshake was left out of the access log.
++func (s *Server) LogStream(r *http.Request, level zapcore.Level, msg string, fields ...zapcore.Field) bool {
++	if !s.shouldLogRequest(r) {
++		return false
++	}
++	for _, logger := range s.Logs.wrapLogger(s.accessLogger, r) {
++		if c := logger.Check(level, msg); c != nil {
++			c.Write(fields...)
++		}
++	}
++	return true
++}
++
+ // logTrace will log that this middleware handler is being invoked.
+ // It emits at DEBUG level.
+ func (s *Server) logTrace(mh MiddlewareHandler) {

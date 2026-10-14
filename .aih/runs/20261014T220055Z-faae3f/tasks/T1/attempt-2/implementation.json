@@ -1,0 +1,58 @@
+{
+  "criteria_notes": [
+    {
+      "criterion": "ACC1",
+      "note": "TestStreamDetachedSurvivesReload; TestUpgradedStreamDetached."
+    },
+    {
+      "criterion": "ACC2",
+      "note": "TestStreamDetachedClosesOnlyRemovedUpstream; TestStreamRegistryCloseOrphaned."
+    },
+    {
+      "criterion": "ACC3",
+      "note": "TestStreamNotDetachedClosedOnReload, TestStreamCloseDelayKeepsStreamUntilDelay, TestUpgradedStreamClosedAfterDelay."
+    },
+    {
+      "criterion": "ACC4",
+      "note": "TestStreamLogsSkipHandshakeAndLevel, TestStreamLogsDefault, TestUpgradedStreamSkipHandshake."
+    },
+    {
+      "criterion": "ACC5",
+      "note": "TestStreamLogsDefault, TestStreamLogsSkipHandshakeAndLevel, TestStreamDetachedWithAccessLogging, TestServerLogStream."
+    },
+    {
+      "criterion": "ACC6",
+      "note": "TestStreamThroughEncode, TestStreamWebSocketThroughEncode, TestInterceptUpgradeThroughReverseProxy, TestReverseProxyHandleResponseUpgrade, the access-log tests, and the unit intercept/encode tests."
+    },
+    {
+      "criterion": "ACC7",
+      "note": "TestResponseRecorder* tests, TestHijackedConnUnwrap, TestEncode* hijack tests, TestUpgradedStreamBypassesRecorder."
+    },
+    {
+      "criterion": "ACC8",
+      "note": "TestStreamExtendedConnectOverH2 (default and detached); HTTP/1.1 detached upgrades are covered by the detached reload tests."
+    },
+    {
+      "criterion": "ACC9",
+      "note": "TestStreamAccountingCountsOnce, TestStreamAccountingFirstResultWins, TestUpgradedStreamAccounts* tests, TestInitReverseProxyMetricsRegistersStreamMetrics; buffered bytes are now counted too."
+    },
+    {
+      "criterion": "ACC10",
+      "note": "caddyfile_test.go, the reverse_proxy_stream_detached adapt test, TestStreamLoadRejectsInvalidLogLevel."
+    },
+    {
+      "criterion": "ACC11",
+      "note": "Field comments on StreamDetached, StreamLogs, SkipHandshake and Level, plus the Caddyfile syntax comment in caddyfile.go."
+    },
+    {
+      "criterion": "ACC12",
+      "note": "stream_reload_test.go and the two new tests in intercept_test.go."
+    },
+    {
+      "criterion": "ACC13",
+      "note": "streams_test.go, metrics_test.go, caddyfile_test.go, responsewriter_test.go, encode_conformance_test.go, intercept_test.go."
+    }
+  ],
+  "replan_request": null,
+  "summary": "The gate failure was a flaky integration test, and the cause was a real gap in the byte accounting. A client's first bytes can already sit in the hijacked connection's read buffer. The proxy forwarded those to the backend but didn't add them to `bytes_to_backend`, so `TestStreamDetachedWithAccessLogging` sometimes saw 24 bytes instead of 25. I now count those buffered bytes in `streaming.go`. After the fix, the integration and reverseproxy packages passed on the final run and on several earlier reruns. I removed the temporary stderr redirect I had added to `TestMain` to read the failure. I did not rerun the caddyhttp, encode and intercept packages after this fix, and nothing else in them changed."
+}

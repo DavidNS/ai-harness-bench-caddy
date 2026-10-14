@@ -1,0 +1,8 @@
+An independent reviewer, who has not seen your reasoning, blocked task T1 (fix-up 1). Fix the findings below ON TOP of your current change: do not start over, do not revert what works, and touch only the task's files. Where a finding says a case is untested, add the test; where it says the code is wrong, fix the code and test it.
+
+Findings:
+- the reviewer requests 2 change(s): ACC9 is not proven by a test: `modules/caddyhttp/reverseproxy/metrics_test.go::TestStreamAccounting` does not exist in modules/caddyhttp/reverseproxy/metrics_test.go
+- [pass 5 coverage] modules/caddyhttp/reverseproxy/metrics_test.go:0: ACC9 is not proven by a test: `modules/caddyhttp/reverseproxy/metrics_test.go::TestStreamAccounting` does not exist in modules/caddyhttp/reverseproxy/metrics_test.go
+- [pass 5 coverage] modules/caddyhttp/reverseproxy/streams_test.go:0: ACC13 is not proven by a test: `modules/caddyhttp/reverseproxy/streams_test.go::TestStreamRegistry` does not exist in modules/caddyhttp/reverseproxy/streams_test.go
+
+When done, finish again with the same JSON answer (summary, criteria_notes, replan_request). The harness will run the task's tests and review the change again.

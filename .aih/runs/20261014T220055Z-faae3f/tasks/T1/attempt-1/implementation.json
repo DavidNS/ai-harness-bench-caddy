@@ -1,0 +1,58 @@
+{
+  "criteria_notes": [
+    {
+      "criterion": "ACC1",
+      "note": "TestStreamDetachedSurvivesReload (integration) echoes through the stream after two reloads that keep the upstream; TestUpgradedStreamDetached covers it at unit level."
+    },
+    {
+      "criterion": "ACC2",
+      "note": "TestStreamDetachedClosesOnlyRemovedUpstream closes the stream to the removed backend while the stream to the retained backend keeps echoing. Unit coverage: TestStreamRegistryCloseOrphaned and TestUpgradedStreamDetached."
+    },
+    {
+      "criterion": "ACC3",
+      "note": "TestStreamNotDetachedClosedOnReload (closed immediately with delay 0), TestStreamCloseDelayKeepsStreamUntilDelay and TestUpgradedStreamClosedAfterDelay (open until the delay). TestStreamDetachedIgnoresCloseDelay shows the delay does not apply to detached streams."
+    },
+    {
+      "criterion": "ACC4",
+      "note": "TestStreamLogsSkipHandshakeAndLevel (no handled-request entry for the upgrade) and TestStreamLogsDefault (handshake logged with status 101). Unit: TestUpgradedStreamSkipHandshake checks the log-skip variable."
+    },
+    {
+      "criterion": "ACC5",
+      "note": "TestStreamLogsDefault (debug by default), TestStreamLogsSkipHandshakeAndLevel (warn), TestStreamDetachedWithAccessLogging (info, stream logged after a reload). Unit: TestServerLogStream and TestLogStreamCloseWithoutAccessLog."
+    },
+    {
+      "criterion": "ACC6",
+      "note": "Integration: TestStreamThroughEncode, TestStreamWebSocketThroughEncode, TestInterceptUpgradeThroughReverseProxy (catch-all handle_response), TestReverseProxyHandleResponseUpgrade, and the access-log tests. Unit: TestInterceptUpgradeIsNotIntercepted, TestInterceptHijackWithoutResponse, TestEncodeUpgradeAndHijack."
+    },
+    {
+      "criterion": "ACC7",
+      "note": "TestResponseRecorderSwitchingProtocolsIsFinal, TestResponseRecorderNoWritesAfterHijack, TestResponseRecorderFailedHijack, TestHijackedConnUnwrap, the TestEncode* hijack tests, and TestUpgradedStreamBypassesRecorder (recorder size stays 0 while bytes flow)."
+    },
+    {
+      "criterion": "ACC8",
+      "note": "TestStreamExtendedConnectOverH2 uses a raw HTTP/2 framer client (default and detached) and passes in the harness run. HTTP/1.1 upgrades in detached mode are covered by the detached reload tests."
+    },
+    {
+      "criterion": "ACC9",
+      "note": "TestStreamAccountingCountsOnce (8 concurrent finish calls, one counted), TestStreamAccountingFirstResultWins, TestUpgradedStreamAccountsCompletedStream, ...ErrorStream and ...Timeout, plus TestInitReverseProxyMetricsRegistersStreamMetrics."
+    },
+    {
+      "criterion": "ACC10",
+      "note": "caddyfile_test.go covers parsing (valid and invalid) and JSON omission of defaults. The adapt test reverse_proxy_stream_detached.caddyfiletest covers the JSON mapping. TestStreamLoadRejectsInvalidLogLevel covers an invalid JSON level."
+    },
+    {
+      "criterion": "ACC11",
+      "note": "Field comments on StreamDetached, StreamLogs, SkipHandshake and Level, plus the Caddyfile syntax comment in caddyfile.go."
+    },
+    {
+      "criterion": "ACC12",
+      "note": "stream_reload_test.go (reload survive/close in both modes, close delay, encode, h2 extended CONNECT, detached with access logging) and the two new tests in intercept_test.go."
+    },
+    {
+      "criterion": "ACC13",
+      "note": "streams_test.go (registry), metrics_test.go (accounting and registration), caddyfile_test.go (parsing), responsewriter_test.go and encode_conformance_test.go (hijack safety), and intercept_test.go."
+    }
+  ],
+  "replan_request": null,
+  "summary": "Added `stream_detached` and `stream_logs { skip_handshake, level }` to `reverse_proxy`, with Caddyfile and JSON support. All listed test files pass. The run covered the caddyhttp, encode, intercept and reverseproxy packages and the full integration package.\n\nI couldn't run the tests against the base commit, so the \"fails without the change\" check is untested. The new tests reference new symbols, so they won't compile there.\n\n**How it works**\n- **Detached registry (`streams.go`):** detached streams register under their upstream in a global registry. Each handler marks its upstreams live at `Provision`. `Cleanup` unmarks them and closes only the streams whose upstream is no longer live in any handler. The non-detached path and `stream_close_delay` are unchanged.\n- **Metrics:** active gauge, closed-by-result counter, duration histogram and bytes counter by direction. A once-only accounting struct counts each stream once, however many close paths fire.\n- **Recorder and encode:** a 101 is final in the recorder and in encode, and writes after `Hijack` become no-ops. The recorder reports `Buffered()` false once hijacked, which is the intercept fix, so `intercept.go` needed no edit.\n- **Raw connection:** the proxy now copies on the raw hijacked connection instead of the recorder's wrapper.\n- **Logging:** `Server.LogStream` writes stream close logs to the access logger. `skip_handshake` sets the existing `LogSkipVar` so the handshake log entry is skipped.\n\n**Behaviour to know about**\n- Streams to dynamic upstreams are only retained across a reload if the same address is also a static upstream in the new config. This is documented on the field.\n- An h2 stream that ends because the client closed its side is reported as `completed`, not `error`.\n- Detached streams log their close to the logger of the config that created them. That works in the test where the log file sink survives the reload, but would not if the reload removed that sink.\n\n**Test-only detail:** `net/http` only advertises extended CONNECT if the process starts with `GODEBUG=http2xconnect=1`. I added a `TestMain` to the integration package that re-execs the test binary with that set. On platforms without `syscall.Exec` (Windows) the h2 test skips.\n\n**Not changed:** `hopheaders_test.go`, `stream_test.go` and `intercept.go` are unmodified. The h1 and h2 tests live in `stream_reload_test.go`."
+}

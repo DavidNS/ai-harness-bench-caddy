@@ -1,0 +1,232 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261014T220043Z/worktrees/20261014T220055Z-faae3f golang:1.27-bookworm go test -count=1 -timeout 30m ./caddytest/integration ./modules/caddyhttp/reverseproxy
+--- FAIL: TestInterceptUpgradeThroughReverseProxy (0.01s)
+    intercept_test.go:54: unable to read the response body unexpected EOF
+    caddytest.go:155: ----------- failed with config -----------
+        {
+          "admin": {
+            "listen": "localhost:2999"
+          },
+          "apps": {
+            "http": {
+              "grace_period": 1,
+              "http_port": 9080,
+              "https_port": 9443,
+              "servers": {
+                "srv0": {
+                  "listen": [
+                    ":9080"
+                  ],
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "handler": "headers",
+                                  "response": {
+                                    "set": {
+                                      "X-Gen": [
+                                        "1"
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "handle_response": [
+                                    {
+                                      "routes": [
+                                        {
+                                          "handle": [
+                                            {
+                                              "body": "intercepted",
+                                              "handler": "static_response",
+                                              "status_code": 200
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ],
+                                  "handler": "intercept"
+                                },
+                                {
+                                  "handler": "reverse_proxy",
+                                  "upstreams": [
+                                    {
+                                      "dial": "127.0.0.1:54331"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "host": [
+                            "localhost"
+                          ]
+                        }
+                      ],
+                      "terminal": true
+                    }
+                  ]
+                }
+              }
+            },
+            "pki": {
+              "certificate_authorities": {
+                "local": {
+                  "install_trust": false
+                }
+              }
+            }
+          }
+        }
+--- FAIL: TestStreamDetachedSurvivesReload (0.00s)
+    caddytest.go:120: failed to load config: {"error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'handle': unrecognized directive: }handle - are you sure your Caddyfile structure (nesting and braces) is correct?, at Caddyfile:18"}
+    caddytest.go:124: failed ensuring config is running: unexpected end of JSON input
+    stream_reload_test.go:173: upgrade response status = 308, want 101
+--- FAIL: TestStreamDetachedClosesOnlyRemovedUpstream (0.00s)
+    caddytest.go:120: failed to load config: {"error":"adapting config using caddyfile adapter: unexpected EOF, at Caddyfile:22"}
+    caddytest.go:124: failed ensuring config is running: unexpected end of JSON input
+    stream_reload_test.go:198: upgrade response status = 308, want 101
+--- FAIL: TestStreamExtendedConnectOverH2 (0.01s)
+    --- FAIL: TestStreamExtendedConnectOverH2/default (0.01s)
+        stream_reload_test.go:354: extended CONNECT failed: net/http: invalid header field name ":protocol"
+    --- FAIL: TestStreamExtendedConnectOverH2/detached (0.01s)
+        stream_reload_test.go:354: extended CONNECT failed: net/http: invalid header field name ":protocol"
+    caddytest.go:155: ----------- failed with config -----------
+        {
+          "admin": {
+            "listen": "localhost:2999"
+          },
+          "apps": {
+            "http": {
+              "grace_period": 1,
+              "http_port": 9080,
+              "https_port": 9443,
+              "servers": {
+                "srv0": {
+                  "listen": [
+                    ":9443"
+                  ],
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "handler": "reverse_proxy",
+                                  "stream_detached": true,
+                                  "upstreams": [
+                                    {
+                                      "dial": "127.0.0.1:54331"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "host": [
+                            "localhost"
+                          ]
+                        }
+                      ],
+                      "terminal": true
+                    }
+                  ]
+                }
+              }
+            },
+            "pki": {
+              "certificate_authorities": {
+                "local": {
+                  "install_trust": false
+                }
+              }
+            }
+          }
+        }
+    caddytest.go:155: ----------- failed with config -----------
+        {
+          "admin": {
+            "listen": "localhost:2999"
+          },
+          "apps": {
+            "http": {
+              "grace_period": 1,
+              "http_port": 9080,
+              "https_port": 9443,
+              "servers": {
+                "srv0": {
+                  "listen": [
+                    ":9443"
+                  ],
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "handler": "reverse_proxy",
+                                  "stream_detached": true,
+                                  "upstreams": [
+                                    {
+                                      "dial": "127.0.0.1:54331"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "host": [
+                            "localhost"
+                          ]
+                        }
+                      ],
+                      "terminal": true
+                    }
+                  ]
+                }
+              }
+            },
+            "pki": {
+              "certificate_authorities": {
+                "local": {
+                  "install_trust": false
+                }
+              }
+            }
+          }
+        }
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/caddytest/integration	15.724s
+{"level":"error","ts":1792016440.1057203,"msg":"can't switch protocols using non-Hijacker ResponseWriter","type":"*httptest.ResponseRecorder"}
+{"level":"error","ts":1792016440.1058238,"msg":"can't switch protocols using non-Hijacker ResponseWriter","type":"*httptest.ResponseRecorder"}
+{"level":"warn","ts":1792016440.1065042,"msg":"The 'tls_trusted_ca_certs' field is deprecated. Use the 'tls_trust_pool' field instead."}
+{"level":"warn","ts":1792016440.106641,"msg":"The 'tls_trusted_ca_certs' field is deprecated. Use the 'tls_trust_pool' field instead."}
+--- FAIL: TestUpgradedStreamAccountsCompletedStream (10.01s)
+    streaming_test.go:527: active streams = 1, want 2
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy	11.297s
+FAIL
+

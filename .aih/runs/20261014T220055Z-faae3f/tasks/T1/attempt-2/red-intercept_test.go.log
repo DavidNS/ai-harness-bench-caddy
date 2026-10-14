@@ -1,0 +1,31 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261014T220043Z/worktrees/20261014T220055Z-faae3f-red golang:1.27-bookworm go test -count=1 -timeout 30m ./modules/caddyhttp/intercept
+--- FAIL: TestInterceptUpgradeIsNotIntercepted (0.00s)
+    intercept_test.go:86: statuses written = [101 101], want [101]
+    intercept_test.go:89: 1 writes reached the response after the hijack
+--- FAIL: TestInterceptHijackWithoutResponse (0.00s)
+panic: invalid WriteHeader code 0 [recovered, repanicked]
+
+goroutine 50 [running]:
+testing.tRunner.func1.2({0x2d44360, 0x322798d405a0})
+	/usr/local/go/src/testing/testing.go:2125 +0x232
+testing.tRunner.func1()
+	/usr/local/go/src/testing/testing.go:2128 +0x329
+panic({0x2d44360?, 0x322798d405a0?})
+	/usr/local/go/src/runtime/panic.go:859 +0x125
+net/http/httptest.checkWriteHeaderCode(...)
+	/usr/local/go/src/net/http/httptest/recorder.go:160
+net/http/httptest.(*ResponseRecorder).WriteHeader(0x0?, 0x0?)
+	/usr/local/go/src/net/http/httptest/recorder.go:170 +0x374
+github.com/caddyserver/caddy/v2/modules/caddyhttp/intercept.(*hijackSpyWriter).WriteHeader(0x322798c968d0?, 0x0?)
+	/targets/.aih/20261014T220043Z/worktrees/20261014T220055Z-faae3f-red/modules/caddyhttp/intercept/intercept_test.go:31 +0x96
+github.com/caddyserver/caddy/v2/modules/caddyhttp/intercept.Intercept.ServeHTTP({{0x322798c96900, 0x1, 0x1}, 0x0, {0x0, 0x0, 0x0}, 0x322798d8f700}, {0x2f8edd0, 0x322798c968d0}, ...)
+	/targets/.aih/20261014T220043Z/worktrees/20261014T220055Z-faae3f-red/modules/caddyhttp/intercept/intercept.go:171 +0x6ab
+github.com/caddyserver/caddy/v2/modules/caddyhttp/intercept.TestInterceptHijackWithoutResponse(0x322798b7eb48)
+	/targets/.aih/20261014T220043Z/worktrees/20261014T220055Z-faae3f-red/modules/caddyhttp/intercept/intercept_test.go:101 +0x2b5
+testing.tRunner(0x322798b7eb48, 0x2fab2a0)
+	/usr/local/go/src/testing/testing.go:2195 +0xea
+created by testing.(*T).Run in goroutine 1
+	/usr/local/go/src/testing/testing.go:2260 +0x4d4
+FAIL	github.com/caddyserver/caddy/v2/modules/caddyhttp/intercept	0.023s
+FAIL
+
