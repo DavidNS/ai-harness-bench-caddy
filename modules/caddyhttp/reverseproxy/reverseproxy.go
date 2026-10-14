@@ -197,7 +197,29 @@ type Handler struct {
 	// is reloaded. Enabling this may be a good idea to avoid a thundering
 	// herd of reconnecting clients which had their connections closed
 	// by the previous config closing. Default: no delay.
+	//
+	// With stream_detached, the delay applies to the streams that are
+	// closed because their upstream was removed from the config.
 	StreamCloseDelay caddy.Duration `json:"stream_close_delay,omitempty"`
+
+	// If true, streaming requests such as WebSockets are detached from
+	// the config they were started under: they are not closed when the
+	// config is reloaded, and keep running without holding on to the old
+	// config. Only the streams going through an upstream that is not part
+	// of the new config are closed, after stream_close_delay if set.
+	// Streams to dynamic upstreams are never closed by a reload.
+	//
+	// HTTP/2 and HTTP/3 extended CONNECT streams are part of the request
+	// they were made with, so they are kept by the HTTP server, which may
+	// still close them when it is shut down after a reload (see the
+	// server's grace period).
+	//
+	// By default, streams are closed when the config is unloaded,
+	// honoring stream_close_delay.
+	StreamDetached bool `json:"stream_detached,omitempty"`
+
+	// Configures how streaming requests such as WebSockets are logged.
+	StreamLogs *StreamLogs `json:"stream_logs,omitempty"`
 
 	// If configured, rewrites the copy of the upstream request.
 	// Allows changing the request method and URI (path and query).
@@ -287,6 +309,12 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	h.logger = ctx.Logger()
 	h.connections = make(map[io.ReadWriteCloser]openConnection)
 	h.connectionsMu = new(sync.Mutex)
+
+	if h.StreamLogs != nil {
+		if err := h.StreamLogs.provision(); err != nil {
+			return err
+		}
+	}
 
 	// warn about unsafe buffering config
 	if h.RequestBuffers == -1 || h.ResponseBuffers == -1 {
@@ -460,9 +488,13 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 func (h *Handler) Cleanup() error {
 	err := h.cleanupConnections()
 
-	// remove hosts from our config from the pool
+	// remove hosts from our config from the pool; detached streams stay
+	// open across a reload, except those going through an upstream that
+	// is not used by any config anymore
 	for _, upstream := range h.Upstreams {
-		_, _ = hosts.Delete(upstream.String())
+		if deleted, _ := hosts.Delete(upstream.String()); deleted {
+			closeDetachedStreams(upstream.String(), time.Duration(h.StreamCloseDelay), h.logger)
+		}
 	}
 
 	return err
