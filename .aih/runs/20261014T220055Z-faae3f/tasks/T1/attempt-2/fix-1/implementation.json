@@ -1,0 +1,18 @@
+{
+  "criteria_notes": [
+    {
+      "criterion": "ACC9",
+      "note": "TestStreamAccounting (metrics_test.go) runs the counts-once and first-result-wins scenarios (8 concurrent finish calls, one counted). The TestUpgradedStreamAccounts* tests in streaming_test.go check the same through a real stream."
+    },
+    {
+      "criterion": "ACC13",
+      "note": "TestStreamRegistry (streams_test.go) covers live counting, add requiring a live upstream, closing only orphaned streams, first-error reporting and concurrency. Metrics accounting, Caddyfile parsing, and recorder/encode hijack safety are covered in metrics_test.go, caddyfile_test.go, responsewriter_test.go and encode_conformance_test.go."
+    },
+    {
+      "criterion": "ACC1-8,10-12",
+      "note": "Unchanged from the previous answer: the integration tests in stream_reload_test.go and intercept_test.go, the unit tests, and the adapt test reverse_proxy_stream_detached.caddyfiletest."
+    }
+  ],
+  "replan_request": null,
+  "summary": "I added the two test names the reviewer said were missing. `TestStreamAccounting` in `metrics_test.go` and `TestStreamRegistry` in `streams_test.go` now exist. Each runs the existing scenario tests as subtests. No production code changed. The reverseproxy package passed with them; the other packages were not rerun."
+}

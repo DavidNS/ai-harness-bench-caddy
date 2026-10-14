@@ -1,0 +1,24 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261014T220043Z/worktrees/20261014T220055Z-faae3f-red golang:1.27-bookworm go test -count=1 -timeout 30m ./modules/caddyhttp/encode
+--- FAIL: TestEncodeUpgradeAndHijack (0.00s)
+    --- FAIL: TestEncodeUpgradeAndHijack/gzip-level-5 (0.00s)
+        encode_conformance_test.go:107: status codes written = [101 200], want only 101
+        encode_conformance_test.go:110: a 101 was encoded: Content-Encoding = "gzip"
+        encode_conformance_test.go:113: 2 writes reached the response after the hijack
+        encode_conformance_test.go:116: body = "\x1f\x8b\b\x00\x00\tn\x88\x00\xff", want empty
+        encode_conformance_test.go:119: Write after hijack = 0, http: request method or response status code does not allow body; want 0, http: connection has been hijacked
+        encode_conformance_test.go:122: ReadFrom after hijack = http: request method or response status code does not allow body, want http: connection has been hijacked
+        encode_conformance_test.go:125: Flush after hijack = http: request method or response status code does not allow body, want nil
+    --- FAIL: TestEncodeUpgradeAndHijack/zstd-level-default (0.00s)
+        encode_conformance_test.go:107: status codes written = [101 200], want only 101
+        encode_conformance_test.go:110: a 101 was encoded: Content-Encoding = "zstd"
+        encode_conformance_test.go:113: 2 writes reached the response after the hijack
+        encode_conformance_test.go:116: body = "(\xb5/\xfd\x048", want empty
+        encode_conformance_test.go:119: Write after hijack = 500, <nil>; want 0, http: connection has been hijacked
+        encode_conformance_test.go:122: ReadFrom after hijack = <nil>, want http: connection has been hijacked
+        encode_conformance_test.go:125: Flush after hijack = http: request method or response status code does not allow body, want nil
+--- FAIL: TestEncodeHijackAfterEncodingStarted (0.00s)
+    encode_conformance_test.go:183: 2 writes reached the response after the hijack
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/modules/caddyhttp/encode	0.399s
+FAIL
+

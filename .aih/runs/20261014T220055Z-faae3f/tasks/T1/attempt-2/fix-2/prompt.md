@@ -1,0 +1,8 @@
+An independent reviewer, who has not seen your reasoning, blocked task T1 (fix-up 2). Fix the findings below ON TOP of your current change: do not start over, do not revert what works, and touch only the task's files. Where a finding says a case is untested, add the test; where it says the code is wrong, fix the code and test it.
+
+Findings:
+- the reviewer requests 2 change(s): Only static h.Upstreams are marked live, but streaming.go:242 registers a stream under the dial address of whichever upstream served it. With dynamic_upstreams (or placeholder dials) and stream_detached, that address is never live, so detachedStreams.add fails and every upgraded stream is closed right after the handshake.
+- [pass 1] modules/caddyhttp/reverseproxy/reverseproxy.go:481: Only static h.Upstreams are marked live, but streaming.go:242 registers a stream under the dial address of whichever upstream served it. With dynamic_upstreams (or placeholder dials) and stream_detached, that address is never live, so detachedStreams.add fails and every upgraded stream is closed right after the handshake.
+- [pass 2] modules/caddyhttp/reverseproxy/streaming_test.go:681: No unit or integration test uses stream_detached together with dynamic_upstreams or a placeholder dial. TestUpgradedStreamDetachedUpstreamNotLive only asserts that a not-live upstream closes the stream; it does not check that a legitimate dynamic upstream does not.
+
+When done, finish again with the same JSON answer (summary, criteria_notes, replan_request). The harness will run the task's tests and review the change again.

@@ -1,0 +1,58 @@
+{
+  "criteria_notes": [
+    {
+      "criterion": "ACC1",
+      "note": "TestStreamDetachedSurvivesReload; TestUpgradedStreamDetached. New: TestStreamDetachedPlaceholderUpstream (integration, placeholder dial survives a reload then closes when the handler is removed) and TestUpgradedStreamDetachedDynamicUpstreams (unit, dynamic handler)."
+    },
+    {
+      "criterion": "ACC2",
+      "note": "TestStreamDetachedClosesOnlyRemovedUpstream; TestStreamRegistryCloseOrphaned; TestStreamRegistryDynamicStreams covers the dynamic key (refused with no dynamic handler, kept across a reload, closed when the last one goes)."
+    },
+    {
+      "criterion": "ACC3",
+      "note": "TestStreamNotDetachedClosedOnReload, TestStreamCloseDelayKeepsStreamUntilDelay, TestUpgradedStreamClosedAfterDelay."
+    },
+    {
+      "criterion": "ACC4",
+      "note": "TestStreamLogsSkipHandshakeAndLevel, TestStreamLogsDefault, TestUpgradedStreamSkipHandshake."
+    },
+    {
+      "criterion": "ACC5",
+      "note": "TestStreamLogsDefault, TestStreamLogsSkipHandshakeAndLevel, TestStreamDetachedWithAccessLogging, TestServerLogStream."
+    },
+    {
+      "criterion": "ACC6",
+      "note": "Encode, intercept, handle_response and access-log integration tests, plus the unit intercept and encode tests."
+    },
+    {
+      "criterion": "ACC7",
+      "note": "TestResponseRecorder* tests, TestHijackedConnUnwrap, TestEncode* hijack tests, TestUpgradedStreamBypassesRecorder."
+    },
+    {
+      "criterion": "ACC8",
+      "note": "TestStreamExtendedConnectOverH2 (default and detached); HTTP/1.1 detached upgrades via the detached reload tests."
+    },
+    {
+      "criterion": "ACC9",
+      "note": "TestStreamAccounting, TestStreamAccountingCountsOnce, TestStreamAccountingFirstResultWins, TestUpgradedStreamAccounts* tests."
+    },
+    {
+      "criterion": "ACC10",
+      "note": "caddyfile_test.go, the reverse_proxy_stream_detached adapt test, TestStreamLoadRejectsInvalidLogLevel."
+    },
+    {
+      "criterion": "ACC11",
+      "note": "Field comments (the StreamDetached comment now describes the dynamic-upstream behaviour) and the Caddyfile syntax comment in caddyfile.go."
+    },
+    {
+      "criterion": "ACC12",
+      "note": "stream_reload_test.go and intercept_test.go integration tests."
+    },
+    {
+      "criterion": "ACC13",
+      "note": "TestStreamRegistry, TestStreamRegistryDynamicStreams, TestStreamAccounting, caddyfile_test.go, responsewriter_test.go, encode_conformance_test.go, intercept_test.go."
+    }
+  ],
+  "replan_request": null,
+  "summary": "Detached streams on handlers with dynamic upstreams or placeholder dials are no longer closed right after the handshake. `Provision` now detects such handlers: `DynamicUpstreams` set, or `{` in an upstream dial. It registers a shared \"dynamic handler is live\" key for them. Their streams stay open while any such handler is in the config, and are closed when the last one goes. Streams to static upstreams behave as before. I updated the `StreamDetached` doc comment to say this. The reverseproxy unit tests and the integration package pass; I did not rerun the caddyhttp, encode and intercept packages, which this change doesn't touch."
+}

@@ -1,0 +1,286 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261014T220043Z/worktrees/20261014T220055Z-faae3f golang:1.27-bookworm go test -count=1 -timeout 30m ./caddytest/integration
+--- FAIL: TestStreamDetachedWithAccessLogging (0.07s)
+    stream_reload_test.go:724: bytes_to_backend = 24, want the traffic from before and after the reload
+    caddytest.go:155: ----------- failed with config -----------
+        {
+          "admin": {
+            "listen": "localhost:2999"
+          },
+          "apps": {
+            "http": {
+              "grace_period": 1,
+              "http_port": 9080,
+              "https_port": 9443,
+              "servers": {
+                "srv0": {
+                  "listen": [
+                    ":9080"
+                  ],
+                  "logs": {
+                    "logger_names": {
+                      "localhost": [
+                        "log0"
+                      ]
+                    }
+                  },
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "handler": "headers",
+                                  "response": {
+                                    "set": {
+                                      "X-Gen": [
+                                        "3"
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "body": "gone",
+                                  "handler": "static_response"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "host": [
+                            "localhost"
+                          ]
+                        }
+                      ],
+                      "terminal": true
+                    }
+                  ]
+                }
+              }
+            },
+            "pki": {
+              "certificate_authorities": {
+                "local": {
+                  "install_trust": false
+                }
+              }
+            }
+          },
+          "logging": {
+            "logs": {
+              "default": {
+                "exclude": [
+                  "http.log.access.log0"
+                ]
+              },
+              "log0": {
+                "encoder": {
+                  "format": "json"
+                },
+                "include": [
+                  "http.log.access.log0"
+                ],
+                "level": "DEBUG",
+                "writer": {
+                  "filename": "/tmp/TestStreamDetachedWithAccessLogging3247991015/001/access.log",
+                  "output": "file"
+                }
+              }
+            }
+          }
+        }
+    caddytest.go:155: ----------- failed with config -----------
+        {
+          "admin": {
+            "listen": "localhost:2999"
+          },
+          "apps": {
+            "http": {
+              "grace_period": 1,
+              "http_port": 9080,
+              "https_port": 9443,
+              "servers": {
+                "srv0": {
+                  "listen": [
+                    ":9080"
+                  ],
+                  "logs": {
+                    "logger_names": {
+                      "localhost": [
+                        "log0"
+                      ]
+                    }
+                  },
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "handler": "headers",
+                                  "response": {
+                                    "set": {
+                                      "X-Gen": [
+                                        "3"
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "body": "gone",
+                                  "handler": "static_response"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "host": [
+                            "localhost"
+                          ]
+                        }
+                      ],
+                      "terminal": true
+                    }
+                  ]
+                }
+              }
+            },
+            "pki": {
+              "certificate_authorities": {
+                "local": {
+                  "install_trust": false
+                }
+              }
+            }
+          },
+          "logging": {
+            "logs": {
+              "default": {
+                "exclude": [
+                  "http.log.access.log0"
+                ]
+              },
+              "log0": {
+                "encoder": {
+                  "format": "json"
+                },
+                "include": [
+                  "http.log.access.log0"
+                ],
+                "level": "DEBUG",
+                "writer": {
+                  "filename": "/tmp/TestStreamDetachedWithAccessLogging3247991015/001/access.log",
+                  "output": "file"
+                }
+              }
+            }
+          }
+        }
+    caddytest.go:155: ----------- failed with config -----------
+        {
+          "admin": {
+            "listen": "localhost:2999"
+          },
+          "apps": {
+            "http": {
+              "grace_period": 1,
+              "http_port": 9080,
+              "https_port": 9443,
+              "servers": {
+                "srv0": {
+                  "listen": [
+                    ":9080"
+                  ],
+                  "logs": {
+                    "logger_names": {
+                      "localhost": [
+                        "log0"
+                      ]
+                    }
+                  },
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "handler": "headers",
+                                  "response": {
+                                    "set": {
+                                      "X-Gen": [
+                                        "3"
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "body": "gone",
+                                  "handler": "static_response"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "host": [
+                            "localhost"
+                          ]
+                        }
+                      ],
+                      "terminal": true
+                    }
+                  ]
+                }
+              }
+            },
+            "pki": {
+              "certificate_authorities": {
+                "local": {
+                  "install_trust": false
+                }
+              }
+            }
+          },
+          "logging": {
+            "logs": {
+              "default": {
+                "exclude": [
+                  "http.log.access.log0"
+                ]
+              },
+              "log0": {
+                "encoder": {
+                  "format": "json"
+                },
+                "include": [
+                  "http.log.access.log0"
+                ],
+                "level": "DEBUG",
+                "writer": {
+                  "filename": "/tmp/TestStreamDetachedWithAccessLogging3247991015/001/access.log",
+                  "output": "file"
+                }
+              }
+            }
+          }
+        }
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/caddytest/integration	15.793s
+FAIL
+
