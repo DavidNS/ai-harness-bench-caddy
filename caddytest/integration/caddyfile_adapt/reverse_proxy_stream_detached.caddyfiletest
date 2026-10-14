@@ -1,0 +1,42 @@
+:80 {
+	reverse_proxy localhost:54321 {
+		stream_detached
+		stream_logs {
+			skip_handshake
+			level INFO
+		}
+	}
+}
+----------
+{
+	"apps": {
+		"http": {
+			"servers": {
+				"srv0": {
+					"listen": [
+						":80"
+					],
+					"routes": [
+						{
+							"handle": [
+								{
+									"handler": "reverse_proxy",
+									"stream_detached": true,
+									"stream_logs": {
+										"level": "info",
+										"skip_handshake": true
+									},
+									"upstreams": [
+										{
+											"dial": "localhost:54321"
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			}
+		}
+	}
+}

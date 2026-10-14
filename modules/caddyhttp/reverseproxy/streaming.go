@@ -26,6 +26,7 @@ import (
 	"io"
 	weakrand "math/rand/v2"
 	"mime"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -35,6 +36,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/net/http/httpguts"
 
+	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 )
 
@@ -141,6 +143,26 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 			}
 			return
 		}
+
+		// copy bytes on the raw connection rather than through
+		// a response recorder's wrapper
+		conn = unwrapHijacked(conn)
+	}
+
+	// the stream is established from here on
+	upstream := streamUpstream(res)
+	acct := newStreamAccounting()
+	result := streamResultCompleted
+	defer func() {
+		// both directions have ended by now, so the byte counts are final
+		wg.Wait()
+		if finalResult, first := acct.finish(result); first {
+			h.logStreamClose(req, upstream, finalResult, acct)
+		}
+	}()
+
+	if h.StreamLogs != nil && h.StreamLogs.SkipHandshake {
+		caddyhttp.SetVar(req.Context(), caddyhttp.LogSkipVar, true)
 	}
 
 	// adopted from https://github.com/golang/go/commit/8bcf2834afdf6a1f7937390903a41518715ef6f5
@@ -159,6 +181,7 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 	start := time.Now()
 	defer func() {
 		conn.Close()
+		backConn.Close()
 		if c := logger.Check(zapcore.DebugLevel, "connection closed"); c != nil {
 			c.Write(zap.Duration("duration", time.Since(start)))
 		}
@@ -182,6 +205,7 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 			}
 			return
 		}
+		acct.toBackend.Add(int64(len(data)))
 	}
 
 	// Ensure the hijacked client connection, and the new connection established
@@ -199,16 +223,49 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 		}
 		return nil
 	}
-	deleteFrontConn := h.registerConnection(conn, gracefulClose(conn, false))
-	deleteBackConn := h.registerConnection(backConn, gracefulClose(backConn, true))
-	defer deleteFrontConn()
-	defer deleteBackConn()
+	if h.StreamDetached {
+		// detached streams are not tied to the config that created them: they are
+		// closed when their upstream is gone from the live config(s), see Cleanup
+		closeStream := func() error {
+			acct.setResult(streamResultClosed)
+			var err error
+			if graceful := gracefulClose(conn, false); graceful != nil {
+				err = graceful()
+			}
+			if graceful := gracefulClose(backConn, true); graceful != nil && err == nil {
+				err = graceful()
+			}
+			conn.Close()
+			backConn.Close()
+			return err
+		}
+		remove, ok := detachedStreams.addStream(upstream, h.dynamicStreams, closeStream)
+		if !ok {
+			// the upstream left the config while the stream was being established
+			closeStream() //nolint:errcheck
+			return
+		}
+		defer remove()
+	} else {
+		frontGraceful := gracefulClose(conn, false)
+		deleteFrontConn := h.registerConnection(conn, func() error {
+			acct.setResult(streamResultClosed)
+			if frontGraceful != nil {
+				return frontGraceful()
+			}
+			return nil
+		})
+		deleteBackConn := h.registerConnection(backConn, gracefulClose(backConn, true))
+		defer deleteFrontConn()
+		defer deleteBackConn()
+	}
 
 	spc := switchProtocolCopier{
 		user:       conn,
 		backend:    backConn,
 		wg:         wg,
 		bufferSize: h.StreamBufferSize,
+		acct:       acct,
 	}
 
 	// setup the timeout if requested
@@ -252,12 +309,18 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 		select {
 		case err := <-errc:
 			if err != nil {
+				// a direction that ended cleanly on a connection with no write half
+				// to close is not a failure
+				if !errors.Is(err, errCopyDone) {
+					result = streamResultError
+				}
 				if c := logger.Check(zapcore.DebugLevel, "streaming error"); c != nil {
 					c.Write(zap.Error(err))
 				}
 				return
 			}
 		case time := <-timeoutc:
+			result = streamResultTimeout
 			if c := logger.Check(zapcore.DebugLevel, "stream timed out"); c != nil {
 				c.Write(zap.Time("timeout", time))
 			}
@@ -676,6 +739,62 @@ type switchProtocolCopier struct {
 	user, backend io.ReadWriteCloser
 	wg            *sync.WaitGroup
 	bufferSize    int
+	acct          *streamAccounting // optional
+}
+
+// unwrapHijacked returns the raw connection behind a hijacked connection
+// that a response recorder wrapped to track its traffic, or conn itself.
+func unwrapHijacked(conn io.ReadWriteCloser) io.ReadWriteCloser {
+	if hc, ok := conn.(interface{ UnwrapHijacked() net.Conn }); ok {
+		return hc.UnwrapHijacked()
+	}
+	return conn
+}
+
+// streamUpstream returns the address of the upstream that res came from.
+func streamUpstream(res *http.Response) string {
+	if res.Request == nil {
+		return ""
+	}
+	di, ok := GetDialInfo(res.Request.Context())
+	if !ok || di.Upstream == nil {
+		return ""
+	}
+	return di.Upstream.Dial
+}
+
+// streamLogRequestCtxKey is the context key of the request as the handler
+// received it, which the stream logs are based on.
+const streamLogRequestCtxKey caddy.CtxKey = "reverse_proxy_stream_log_request"
+
+// streamLogRequest returns the request to base the stream's log entries on:
+// the request as the handler received it, if known, since the proxied request
+// may have had its host rewritten, which decides which logger is used.
+func streamLogRequest(req *http.Request) *http.Request {
+	if orig, ok := req.Context().Value(streamLogRequestCtxKey).(*http.Request); ok {
+		return orig
+	}
+	return req
+}
+
+// logStreamClose writes the stream close log to the access logger of the server.
+func (h *Handler) logStreamClose(req *http.Request, upstream, result string, acct *streamAccounting) {
+	server, ok := req.Context().Value(caddyhttp.ServerCtxKey).(*caddyhttp.Server)
+	if !ok {
+		return
+	}
+	logReq := streamLogRequest(req)
+	server.LogStream(logReq, h.streamLogLevel, "stream closed",
+		zap.Object("request", caddyhttp.LoggableHTTPRequest{
+			Request:              logReq,
+			ShouldLogCredentials: server.Logs != nil && server.Logs.ShouldLogCredentials,
+		}),
+		zap.String("upstream", upstream),
+		zap.String("result", result),
+		zap.Duration("duration", time.Since(acct.start)),
+		zap.Int64("bytes_to_backend", acct.toBackend.Load()),
+		zap.Int64("bytes_from_backend", acct.fromBackend.Load()),
+	)
 }
 
 // errCopyDone is reported by a direction that ended at a clean EOF on a
@@ -685,7 +804,11 @@ var errCopyDone = errors.New("hijacked connection copy complete")
 
 func (c switchProtocolCopier) copyFromBackend(errc chan<- error) {
 	defer c.wg.Done()
-	if _, err := io.CopyBuffer(c.user, c.backend, c.buffer()); err != nil {
+	n, err := io.CopyBuffer(c.user, c.backend, c.buffer())
+	if c.acct != nil {
+		c.acct.fromBackend.Add(n)
+	}
+	if err != nil {
 		errc <- err
 		return
 	}
@@ -701,7 +824,11 @@ func (c switchProtocolCopier) copyFromBackend(errc chan<- error) {
 
 func (c switchProtocolCopier) copyToBackend(errc chan<- error) {
 	defer c.wg.Done()
-	if _, err := io.CopyBuffer(c.backend, c.user, c.buffer()); err != nil {
+	n, err := io.CopyBuffer(c.backend, c.user, c.buffer())
+	if c.acct != nil {
+		c.acct.toBackend.Add(n)
+	}
+	if err != nil {
 		errc <- err
 		return
 	}

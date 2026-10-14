@@ -43,7 +43,64 @@ func initReverseProxyMetrics(handler *Handler, registry *prometheus.Registry) {
 		panic(err)
 	}
 
+	for _, c := range []prometheus.Collector{
+		streamMetrics.active,
+		streamMetrics.closed,
+		streamMetrics.duration,
+		streamMetrics.bytes,
+	} {
+		// the same collectors are registered again on every reload; that is expected
+		if err := registry.Register(c); err != nil {
+			if _, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); !ok {
+				panic(err)
+			}
+		}
+	}
+
 	reverseProxyMetrics.logger = handler.logger.Named("reverse_proxy.metrics")
+}
+
+// streamMetrics holds the metrics of upgraded streams. The collectors
+// are created up front, so streams can always be accounted for, and
+// registered with the metrics registry when a handler is provisioned.
+var streamMetrics = newStreamMetricSet()
+
+type streamMetricSet struct {
+	active   prometheus.Gauge
+	closed   *prometheus.CounterVec
+	duration prometheus.Histogram
+	bytes    *prometheus.CounterVec
+}
+
+func newStreamMetricSet() *streamMetricSet {
+	const ns, sub = "caddy", "reverse_proxy"
+	return &streamMetricSet{
+		active: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: ns,
+			Subsystem: sub,
+			Name:      "streams_active",
+			Help:      "Number of upgraded streams (such as WebSockets) currently open.",
+		}),
+		closed: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: ns,
+			Subsystem: sub,
+			Name:      "streams_closed_total",
+			Help:      "Counter of upgraded streams that were closed, by result.",
+		}, []string{"result"}),
+		duration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: ns,
+			Subsystem: sub,
+			Name:      "stream_duration_seconds",
+			Help:      "Histogram of the duration of upgraded streams.",
+			Buckets:   []float64{0.1, 1, 10, 60, 300, 1800, 3600, 86400},
+		}),
+		bytes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: ns,
+			Subsystem: sub,
+			Name:      "stream_bytes_total",
+			Help:      "Counter of bytes copied through upgraded streams, by direction relative to the backend.",
+		}, []string{"direction"}),
+	}
 }
 
 type metricsUpstreamsHealthyUpdater struct {

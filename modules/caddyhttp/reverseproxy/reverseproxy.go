@@ -199,6 +199,21 @@ type Handler struct {
 	// by the previous config closing. Default: no delay.
 	StreamCloseDelay caddy.Duration `json:"stream_close_delay,omitempty"`
 
+	// If true, upgraded streams (WebSockets, other Upgrade tunnels, HTTP/2
+	// extended CONNECT) are detached from the lifecycle of this handler's
+	// config: they survive a config reload, and are closed only if their
+	// upstream is no longer present in the new config (or when Caddy
+	// stops). stream_close_delay does not apply to detached streams.
+	// With dynamic upstreams (or placeholders in an upstream address), the
+	// upstream of a stream can't be checked against the new config, so its
+	// streams are retained while any such handler is in the config.
+	// Default: false, i.e. streams are closed when the config is
+	// unloaded, honoring stream_close_delay.
+	StreamDetached bool `json:"stream_detached,omitempty"`
+
+	// Configures logging of upgraded streams.
+	StreamLogs *StreamLogs `json:"stream_logs,omitempty"`
+
 	// If configured, rewrites the copy of the upstream request.
 	// Allows changing the request method and URI (path and query).
 	// Since the rewrite is applied to the copy, it does not persist
@@ -263,6 +278,11 @@ type Handler struct {
 	connectionsCloseTimer *time.Timer
 	connectionsMu         *sync.Mutex
 
+	// upstreams this handler registered as live in the stream registry
+	registeredUpstreams []string
+	dynamicStreams      bool // upstreams are only known when serving requests
+	streamLogLevel      zapcore.Level
+
 	ctx    caddy.Context
 	logger *zap.Logger
 	events *caddyevents.App
@@ -287,6 +307,13 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	h.logger = ctx.Logger()
 	h.connections = make(map[io.ReadWriteCloser]openConnection)
 	h.connectionsMu = new(sync.Mutex)
+
+	h.streamLogLevel = zapcore.DebugLevel
+	if h.StreamLogs != nil && h.StreamLogs.Level != "" {
+		if err := h.streamLogLevel.UnmarshalText([]byte(h.StreamLogs.Level)); err != nil {
+			return fmt.Errorf("invalid stream_logs level '%s': %v", h.StreamLogs.Level, err)
+		}
+	}
 
 	// warn about unsafe buffering config
 	if h.RequestBuffers == -1 || h.ResponseBuffers == -1 {
@@ -453,12 +480,35 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	upstreamHealthyUpdater := newMetricsUpstreamsHealthyUpdater(h, ctx)
 	upstreamHealthyUpdater.init()
 
+	if h.StreamDetached {
+		h.dynamicStreams = h.DynamicUpstreams != nil
+		for _, u := range h.Upstreams {
+			h.registeredUpstreams = append(h.registeredUpstreams, u.Dial)
+			if strings.Contains(u.Dial, "{") {
+				h.dynamicStreams = true
+			}
+		}
+		if h.dynamicStreams {
+			h.registeredUpstreams = append(h.registeredUpstreams, dynamicLiveKey)
+		}
+		detachedStreams.addLive(h.registeredUpstreams)
+	}
+
 	return nil
 }
 
 // Cleanup cleans up the resources made by h.
 func (h *Handler) Cleanup() error {
-	err := h.cleanupConnections()
+	var err error
+	if h.StreamDetached {
+		// detached streams outlive this handler unless their upstream is
+		// gone from every handler that is still live
+		detachedStreams.removeLive(h.registeredUpstreams)
+		h.registeredUpstreams = nil
+		err = detachedStreams.closeOrphaned()
+	} else {
+		err = h.cleanupConnections()
+	}
 
 	// remove hosts from our config from the pool
 	for _, upstream := range h.Upstreams {
@@ -513,6 +563,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		return caddyhttp.Error(http.StatusInternalServerError,
 			fmt.Errorf("preparing request for upstream round-trip: %v", err))
 	}
+
+	// upgraded streams are logged against the request as it came in
+	clonedReq = clonedReq.WithContext(context.WithValue(clonedReq.Context(), streamLogRequestCtxKey, r))
 
 	// websocket over http2 or http3 if extended connect is enabled, assuming backend doesn't support this, the request will be modified to http1.1 upgrade
 	// Both use the same upgrade mechanism: server advertizes extended connect support, and client sends the pseudo header :protocol in a CONNECT request

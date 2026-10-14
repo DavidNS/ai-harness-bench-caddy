@@ -1,8 +1,12 @@
 package encode_test
 
 import (
+	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -15,6 +19,170 @@ import (
 )
 
 const conformanceContentType = "text/plain"
+
+// hijackableRecorder is a response writer that can be hijacked, and
+// that notes everything written to it after that, which is an error.
+type hijackableRecorder struct {
+	*httptest.ResponseRecorder
+	hijackErr      error
+	hijacked       bool
+	headers        []int // status codes written, in order
+	writesAfterHij int
+	peer           net.Conn
+}
+
+func (h *hijackableRecorder) WriteHeader(code int) {
+	if h.hijacked {
+		h.writesAfterHij++
+	}
+	h.headers = append(h.headers, code)
+	h.ResponseRecorder.WriteHeader(code)
+}
+
+func (h *hijackableRecorder) Write(p []byte) (int, error) {
+	if h.hijacked {
+		h.writesAfterHij++
+	}
+	return h.ResponseRecorder.Write(p)
+}
+
+func (h *hijackableRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if h.hijackErr != nil {
+		return nil, nil, h.hijackErr
+	}
+	h.hijacked = true
+	conn, peer := net.Pipe()
+	h.peer = peer
+	return conn, bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)), nil
+}
+
+// An upgrade works through encode: the 101 is final and is written as is,
+// and once the connection is hijacked nothing is written to the response.
+func TestEncodeUpgradeAndHijack(t *testing.T) {
+	for _, encCase := range standardEncoderCases(t) {
+		t.Run(encCase.name, func(t *testing.T) {
+			enc := newEncodeHandler(t, encCase, 1)
+
+			w := &hijackableRecorder{ResponseRecorder: httptest.NewRecorder()}
+			r := httptest.NewRequest(http.MethodGet, "/ws", nil)
+			r.Header.Set("Accept-Encoding", encCase.encoding.AcceptEncoding())
+			r.Header.Set("Connection", "Upgrade")
+			r.Header.Set("Upgrade", "websocket")
+
+			var hijackErr error
+			var afterHijack struct {
+				n        int
+				err      error
+				readFrom error
+				flush    error
+			}
+			next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+				w.Header().Set("Content-Type", "text/plain")
+				w.Header().Set("Upgrade", "websocket")
+				w.Header().Set("Connection", "Upgrade")
+				w.WriteHeader(http.StatusSwitchingProtocols)
+
+				conn, _, err := http.NewResponseController(w).Hijack()
+				hijackErr = err
+				if err != nil {
+					return nil
+				}
+				defer conn.Close()
+
+				// all of this must be refused or ignored
+				w.WriteHeader(http.StatusOK)
+				afterHijack.n, afterHijack.err = w.Write([]byte(strings.Repeat("data ", 100)))
+				_, afterHijack.readFrom = w.(io.ReaderFrom).ReadFrom(strings.NewReader("more"))
+				afterHijack.flush = http.NewResponseController(w).Flush()
+				return nil
+			})
+			if err := enc.ServeHTTP(w, r, next); err != nil {
+				t.Fatal(err)
+			}
+
+			if hijackErr != nil {
+				t.Fatalf("hijack failed: %v", hijackErr)
+			}
+			if !slices.Equal(w.headers, []int{http.StatusSwitchingProtocols}) {
+				t.Errorf("status codes written = %v, want only 101", w.headers)
+			}
+			if got := w.Header().Get("Content-Encoding"); got != "" {
+				t.Errorf("a 101 was encoded: Content-Encoding = %q", got)
+			}
+			if w.writesAfterHij != 0 {
+				t.Errorf("%d writes reached the response after the hijack", w.writesAfterHij)
+			}
+			if w.Body.Len() != 0 {
+				t.Errorf("body = %q, want empty", w.Body.String())
+			}
+			if afterHijack.n != 0 || !errors.Is(afterHijack.err, http.ErrHijacked) {
+				t.Errorf("Write after hijack = %d, %v; want 0, %v", afterHijack.n, afterHijack.err, http.ErrHijacked)
+			}
+			if !errors.Is(afterHijack.readFrom, http.ErrHijacked) {
+				t.Errorf("ReadFrom after hijack = %v, want %v", afterHijack.readFrom, http.ErrHijacked)
+			}
+			if afterHijack.flush != nil {
+				t.Errorf("Flush after hijack = %v, want nil", afterHijack.flush)
+			}
+		})
+	}
+}
+
+// A hijack that fails leaves the writer usable.
+func TestEncodeFailedHijack(t *testing.T) {
+	encCase := standardEncoderCases(t)[0]
+	enc := newEncodeHandler(t, encCase, 1)
+
+	hijackFailure := errors.New("hijack failed")
+	w := &hijackableRecorder{ResponseRecorder: httptest.NewRecorder(), hijackErr: hijackFailure}
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("Accept-Encoding", encCase.encoding.AcceptEncoding())
+
+	var hijackErr error
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		_, _, hijackErr = http.NewResponseController(w).Hijack()
+		w.Header().Set("Content-Type", conformanceContentType)
+		_, err := w.Write([]byte("still writable"))
+		return err
+	})
+	if err := enc.ServeHTTP(w, r, next); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(hijackErr, hijackFailure) {
+		t.Fatalf("hijack error = %v, want %v", hijackErr, hijackFailure)
+	}
+	if w.Code != http.StatusOK || w.Body.Len() == 0 {
+		t.Errorf("response after failed hijack: %d, %d body bytes", w.Code, w.Body.Len())
+	}
+}
+
+// A hijack after the response started to be encoded does not try to finish the encoded stream.
+func TestEncodeHijackAfterEncodingStarted(t *testing.T) {
+	encCase := standardEncoderCases(t)[0]
+	enc := newEncodeHandler(t, encCase, 1)
+
+	w := &hijackableRecorder{ResponseRecorder: httptest.NewRecorder()}
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("Accept-Encoding", encCase.encoding.AcceptEncoding())
+
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		w.Header().Set("Content-Type", conformanceContentType)
+		if _, err := w.Write([]byte(strings.Repeat("compress me ", 1000))); err != nil {
+			return err
+		}
+		conn, _, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			return err
+		}
+		return conn.Close()
+	})
+	if err := enc.ServeHTTP(w, r, next); err != nil {
+		t.Fatal(err)
+	}
+	if w.writesAfterHij != 0 {
+		t.Errorf("%d writes reached the response after the hijack", w.writesAfterHij)
+	}
+}
 
 func TestEncodeIfNoneMatch(t *testing.T) {
 	for _, encCase := range standardEncoderCases(t) {

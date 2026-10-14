@@ -20,10 +20,12 @@
 package encode
 
 import (
+	"bufio"
 	"cmp"
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -255,12 +257,37 @@ type responseWriter struct {
 	incremental  bool
 	isConnect    bool
 	disabled     bool // disable encoding for this response
+	hijacked     bool // the connection was taken over; nothing may be written anymore
+}
+
+// Hijack implements http.Hijacker. After a successful hijack the
+// connection no longer carries an HTTP response, so the writer
+// stops writing headers and bodies to the underlying writer.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	//nolint:bodyclose
+	conn, brw, err := http.NewResponseController(rw.ResponseWriter).Hijack()
+	if err != nil {
+		return nil, nil, err
+	}
+	rw.hijacked = true
+	rw.wroteHeader = true
+	return conn, brw, nil
 }
 
 // WriteHeader stores the status to write when the time comes
-// to actually write the header.
+// to actually write the header. A 101 (Switching Protocols) is
+// the final response of an upgrade, so it is written right away
+// and never encoded.
 func (rw *responseWriter) WriteHeader(status int) {
+	if rw.hijacked {
+		return
+	}
 	rw.statusCode = status
+	if status == http.StatusSwitchingProtocols {
+		rw.ResponseWriter.WriteHeader(status)
+		rw.wroteHeader = true
+		return
+	}
 	if status == http.StatusPartialContent {
 		rw.disabled = true // partial representations must not be dynamically re-encoded
 	}
@@ -332,6 +359,9 @@ func (enc *Encode) Match(rw *responseWriter) bool {
 // FlushError is an alternative Flush returning an error. It delays the actual Flush of the underlying
 // ResponseWriterWrapper until headers were written.
 func (rw *responseWriter) FlushError() error {
+	if rw.hijacked {
+		return nil
+	}
 	if !rw.wroteHeader && rw.statusCode == 0 && caddyhttp.IsIncremental(rw.Header()) {
 		rw.WriteHeader(http.StatusOK)
 	}
@@ -365,6 +395,10 @@ func (rw *responseWriter) FlushError() error {
 // it is encoded using the encoder, which is initialized
 // if not done so already.
 func (rw *responseWriter) Write(p []byte) (int, error) {
+	if rw.hijacked {
+		return 0, http.ErrHijacked
+	}
+
 	// ignore zero data writes, probably head request
 	if len(p) == 0 {
 		return 0, nil
@@ -438,6 +472,9 @@ const sniffLen = 512
 // It's based on the standard library HTTP/1.1 response writer implementation.
 // https://github.com/golang/go/blob/f4e3ec3dbe3b8e04a058d266adf8e048bab563f2/src/net/http/server.go#L586
 func (rw *responseWriter) ReadFrom(r io.Reader) (int64, error) {
+	if rw.hijacked {
+		return 0, http.ErrHijacked
+	}
 	if rw.incremental || !rw.wroteHeader && caddyhttp.IsIncremental(rw.Header()) {
 		return io.Copy(writerOnly{rw}, r)
 	}
@@ -491,7 +528,10 @@ func (rw *responseWriter) Close() error {
 
 	var err error
 	if rw.w != nil {
-		err = rw.w.Close()
+		// the encoder's trailer cannot go anywhere on a hijacked connection
+		if !rw.hijacked {
+			err = rw.w.Close()
+		}
 		rw.w.Reset(nil)
 		rw.config.writerPools[rw.encodingName].Put(rw.w)
 		rw.w = nil

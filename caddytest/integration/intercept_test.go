@@ -39,6 +39,46 @@ func TestIntercept(t *testing.T) {
 	tester.AssertGetResponse("http://localhost:9080/no-intercept", 200, "I'm not a teapot")
 }
 
+// An upgrade is the final response: handle_response routes that match every
+// response do not get to intercept it.
+func TestInterceptUpgradeThroughReverseProxy(t *testing.T) {
+	startUpgradeBackend(t, streamBackendA)
+	tester := caddytest.NewTester(t)
+	tester.InitServer(streamCaddyfile(1, `intercept {
+		handle_response {
+			respond "intercepted" 200
+		}
+	}
+	reverse_proxy 127.0.0.1:54331`), "caddyfile")
+
+	tn := openTunnel(t, "/ws", "echo")
+	tn.echo(t, "through intercept")
+	tn.echo(t, "and again")
+
+	// the same with a WebSocket handshake
+	ws := openTunnel(t, "/ws", "websocket",
+		"Sec-WebSocket-Version: 13",
+		"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==")
+	ws.echo(t, "websocket through intercept")
+}
+
+// The same with the interception done by the reverse proxy's own handle_response.
+func TestReverseProxyHandleResponseUpgrade(t *testing.T) {
+	startUpgradeBackend(t, streamBackendA)
+	tester := caddytest.NewTester(t)
+	tester.InitServer(streamCaddyfile(1, `reverse_proxy 127.0.0.1:54331 {
+		@upgraded status 101
+		handle_response @upgraded {
+			copy_response
+		}
+		stream_detached
+	}`), "caddyfile")
+
+	tn := openTunnel(t, "/ws", "echo")
+	tn.echo(t, "through handle_response")
+	tester.AssertGetResponse("http://localhost:9080/plain", 200, "plain response")
+}
+
 func TestInterceptReplaceStatusWithMatcher(t *testing.T) {
 	tester := caddytest.NewTester(t)
 	tester.InitServer(`{

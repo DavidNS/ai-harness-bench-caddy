@@ -1211,6 +1211,25 @@ func (s *Server) shouldLogRequest(r *http.Request) bool {
 	return !s.Logs.SkipUnmappedHosts
 }
 
+// LogStream writes an entry about an upgraded stream (such as a WebSocket)
+// that was established by r to the same loggers that the access log of r
+// goes to, honoring the server's per-host logger names and skipped hosts.
+// It reports whether r is eligible for access logging at all. Unlike the
+// access log entry of the request, it is not affected by the request being
+// flagged to skip logging, so that streams can be logged after their
+// handshake was left out of the access log.
+func (s *Server) LogStream(r *http.Request, level zapcore.Level, msg string, fields ...zapcore.Field) bool {
+	if !s.shouldLogRequest(r) {
+		return false
+	}
+	for _, logger := range s.Logs.wrapLogger(s.accessLogger, r) {
+		if c := logger.Check(level, msg); c != nil {
+			c.Write(fields...)
+		}
+	}
+	return true
+}
+
 // logTrace will log that this middleware handler is being invoked.
 // It emits at DEBUG level.
 func (s *Server) logTrace(mh MiddlewareHandler) {
