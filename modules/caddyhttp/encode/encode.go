@@ -20,10 +20,12 @@
 package encode
 
 import (
+	"bufio"
 	"cmp"
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -255,12 +257,24 @@ type responseWriter struct {
 	incremental  bool
 	isConnect    bool
 	disabled     bool // disable encoding for this response
+	switched     bool // protocols were switched or the connection hijacked; nothing more may be written
 }
 
 // WriteHeader stores the status to write when the time comes
-// to actually write the header.
+// to actually write the header. A 101 Switching Protocols
+// response is final: it is written immediately and the response
+// is over, so anything written after it is dropped.
 func (rw *responseWriter) WriteHeader(status int) {
+	if rw.switched {
+		return
+	}
 	rw.statusCode = status
+	if status == http.StatusSwitchingProtocols {
+		rw.switched = true
+		rw.wroteHeader = true
+		rw.ResponseWriter.WriteHeader(status)
+		return
+	}
 	if status == http.StatusPartialContent {
 		rw.disabled = true // partial representations must not be dynamically re-encoded
 	}
@@ -365,6 +379,10 @@ func (rw *responseWriter) FlushError() error {
 // it is encoded using the encoder, which is initialized
 // if not done so already.
 func (rw *responseWriter) Write(p []byte) (int, error) {
+	if rw.switched {
+		return 0, http.ErrHijacked
+	}
+
 	// ignore zero data writes, probably head request
 	if len(p) == 0 {
 		return 0, nil
@@ -438,6 +456,9 @@ const sniffLen = 512
 // It's based on the standard library HTTP/1.1 response writer implementation.
 // https://github.com/golang/go/blob/f4e3ec3dbe3b8e04a058d266adf8e048bab563f2/src/net/http/server.go#L586
 func (rw *responseWriter) ReadFrom(r io.Reader) (int64, error) {
+	if rw.switched {
+		return 0, http.ErrHijacked
+	}
 	if rw.incremental || !rw.wroteHeader && caddyhttp.IsIncremental(rw.Header()) {
 		return io.Copy(writerOnly{rw}, r)
 	}
@@ -497,6 +518,20 @@ func (rw *responseWriter) Close() error {
 		rw.w = nil
 	}
 	return err
+}
+
+// Hijack implements http.Hijacker by hijacking the underlying
+// ResponseWriter. Once hijacked, the response is over and any
+// further write to rw is dropped.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	//nolint:bodyclose
+	conn, brw, err := http.NewResponseController(rw.ResponseWriter).Hijack()
+	if err != nil {
+		return nil, nil, err
+	}
+	rw.switched = true
+	rw.wroteHeader = true
+	return conn, brw, nil
 }
 
 // Unwrap returns the underlying ResponseWriter.
