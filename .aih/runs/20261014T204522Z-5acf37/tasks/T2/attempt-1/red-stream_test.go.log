@@ -1,0 +1,329 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261014T204518Z/worktrees/20261014T204522Z-5acf37-red golang:1.27-bookworm go test -count=1 -timeout 30m ./caddytest/integration
+"pki.ca.local","msg":"root certificate trust store installation disabled; unconfigured clients may show warnings","path":"storage:pki/authorities/local/root.crt"}
+{"level":"info","ts":1792014059.2333498,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"info","ts":1792014059.2335846,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792014059.2336113,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792014059.233724,"msg":"caddytest: config load time took 2.358017ms"}
+{"level":"info","ts":1792014059.2342992,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792014059.2347317,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"37576","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792014064.2370207,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"43986","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792014064.2374027,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"43986","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792014064.237701,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"43986","headers":{"User-Agent":["Go-http-client/1.1"],"Content-Length":["275"],"Content-Type":["text/caddyfile"],"Accept-Encoding":["gzip"]}}
+{"level":"error","ts":1792014064.2380347,"logger":"admin.api","msg":"request error","error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_detached, at Caddyfile:14","status_code":400}
+{"level":"info","ts":1792014064.2382908,"msg":"caddytest: config load time took 685.534µs"}
+{"level":"error","ts":1792014064.2390914,"logger":"http.log.error","msg":"dial tcp 127.0.0.1:44923: connect: connection refused","request":{"remote_ip":"127.0.0.1","remote_port":"44130","client_ip":"127.0.0.1","proto":"HTTP/1.1","method":"GET","host":"localhost:9080","uri":"/first","headers":{"User-Agent":["Go-http-client/1.1"],"Connection":["Upgrade"],"Upgrade":["websocket"]}},"duration":0.000271914,"status":502,"err_id":"p2tymuih7","err_trace":"reverseproxy.statusError (reverseproxy.go:1695)"}
+--- FAIL: TestDetachedStreamAccessLog (0.01s)
+    caddytest.go:120: failed to load config: {"error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_detached, at Caddyfile:14"}
+    caddytest.go:124: failed ensuring config is running: unexpected end of JSON input
+    stream_test.go:772: upgrade status = 502, want 101
+--- FAIL: TestExtendedConnectH2 (1.06s)
+    stream_test.go:842: extended CONNECT test failed: exit status 1
+        === RUN   TestExtendedConnectH2
+        === RUN   TestExtendedConnectH2/default
+        === RUN   TestExtendedConnectH2/detached
+        === NAME  TestExtendedConnectH2
+            caddytest.go:120: failed to load config: {"error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_detached, at Caddyfile:13"}
+            caddytest.go:124: failed ensuring config is running: unexpected end of JSON input
+            caddytest.go:155: ----------- failed with config -----------
+                {
+                  "admin": {
+                    "listen": "localhost:2998"
+                  },
+                  "apps": {
+                    "http": {
+                      "grace_period": 1,
+                      "http_port": 9081,
+                      "https_port": 9444,
+                      "servers": {
+                        "srv0": {
+                          "listen": [
+                            ":9444"
+                          ],
+                          "protocols": [
+                            "h1",
+                            "h2"
+                          ],
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "handler": "subroute",
+                                  "routes": [
+                                    {
+                                      "handle": [
+                                        {
+                                          "handler": "reverse_proxy",
+                                          "upstreams": [
+                                            {
+                                              "dial": "127.0.0.1:41023"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ],
+                              "match": [
+                                {
+                                  "host": [
+                                    "localhost"
+                                  ]
+                                }
+                              ],
+                              "terminal": true
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "pki": {
+                      "certificate_authorities": {
+                        "local": {
+                          "install_trust": false
+                        }
+                      }
+                    }
+                  }
+                }
+            caddytest.go:155: ----------- failed with config -----------
+                {
+                  "admin": {
+                    "listen": "localhost:2998"
+                  },
+                  "apps": {
+                    "http": {
+                      "grace_period": 1,
+                      "http_port": 9081,
+                      "https_port": 9444,
+                      "servers": {
+                        "srv0": {
+                          "listen": [
+                            ":9444"
+                          ],
+                          "protocols": [
+                            "h1",
+                            "h2"
+                          ],
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "handler": "subroute",
+                                  "routes": [
+                                    {
+                                      "handle": [
+                                        {
+                                          "handler": "reverse_proxy",
+                                          "upstreams": [
+                                            {
+                                              "dial": "127.0.0.1:41023"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ],
+                              "match": [
+                                {
+                                  "host": [
+                                    "localhost"
+                                  ]
+                                }
+                              ],
+                              "terminal": true
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "pki": {
+                      "certificate_authorities": {
+                        "local": {
+                          "install_trust": false
+                        }
+                      }
+                    }
+                  }
+                }
+        --- FAIL: TestExtendedConnectH2 (1.02s)
+            --- PASS: TestExtendedConnectH2/default (1.01s)
+            --- PASS: TestExtendedConnectH2/detached (0.01s)
+        FAIL
+{"level":"info","ts":1792014065.2996294,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"43998","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792014065.2998817,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"43998","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792014065.3002448,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"43998","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"],"Content-Length":["185"],"Content-Type":["text/caddyfile"]}}
+{"level":"error","ts":1792014065.300405,"logger":"admin.api","msg":"request error","error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_detached, at Caddyfile:11","status_code":400}
+{"level":"info","ts":1792014065.3005054,"msg":"caddytest: config load time took 377.819µs"}
+{"level":"error","ts":1792014065.3013246,"logger":"http.log.error","msg":"dial tcp 127.0.0.1:44923: connect: connection refused","request":{"remote_ip":"127.0.0.1","remote_port":"44144","client_ip":"127.0.0.1","proto":"HTTP/1.1","method":"GET","host":"localhost:9080","uri":"/stream0","headers":{"User-Agent":["Go-http-client/1.1"],"Connection":["Upgrade"],"Sec-Websocket-Key":["dGhlIHNhbXBsZSBub25jZQ=="],"Sec-Websocket-Version":["13"],"Upgrade":["websocket"]}},"duration":0.000281814,"status":502,"err_id":"v9zgwyn88","err_trace":"reverseproxy.statusError (reverseproxy.go:1695)"}
+--- FAIL: TestDetachedHTTP11Upgrade (0.00s)
+    caddytest.go:120: failed to load config: {"error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_detached, at Caddyfile:11"}
+    caddytest.go:124: failed ensuring config is running: unexpected end of JSON input
+    stream_test.go:1060: upgrade status = 502, want 101
+{"level":"info","ts":1792014065.30404,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"44008","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792014065.3043616,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"44008","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792014065.3046095,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"44008","headers":{"Content-Type":["text/caddyfile"],"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"],"Content-Length":["198"]}}
+{"level":"info","ts":1792014065.306589,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//localhost:2999","//[::1]:2999","//127.0.0.1:2999"]}
+{"level":"warn","ts":1792014065.3068285,"logger":"http.auto_https","msg":"server is listening only on the HTTP port, so no automatic HTTPS will be applied to this server","server_name":"srv0","http_port":9080}
+{"level":"info","ts":1792014065.3071017,"logger":"pki.ca.local","msg":"root certificate trust store installation disabled; unconfigured clients may show warnings","path":"storage:pki/authorities/local/root.crt"}
+{"level":"warn","ts":1792014065.3075175,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792014065.3075428,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792014065.3075473,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1792014065.3075662,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"info","ts":1792014065.3077521,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792014065.307784,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792014065.3079958,"msg":"caddytest: config load time took 3.482774ms"}
+{"level":"info","ts":1792014065.3088503,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"44016","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792014065.3101702,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792014065.3110528,"msg":"caddytest: redirecting the dialer from localhost:9080 to 127.0.0.1:9080"}
+{"level":"info","ts":1792014065.3136792,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"44016","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792014065.3139737,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"44016","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792014065.314259,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"44016","headers":{"Content-Length":["213"],"Content-Type":["text/caddyfile"],"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"]}}
+{"level":"error","ts":1792014065.314543,"logger":"admin.api","msg":"request error","error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_detached, at Caddyfile:12","status_code":400}
+{"level":"info","ts":1792014065.3146746,"msg":"caddytest: config load time took 534.326µs"}
+{"level":"info","ts":1792014065.3166094,"msg":"caddytest: redirecting the dialer from localhost:9080 to 127.0.0.1:9080"}
+{"level":"info","ts":1792014065.3173664,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"44016","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792014065.3176224,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"44016","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+--- FAIL: TestUpgradeThroughEncode (0.02s)
+    caddytest.go:120: failed to load config: {"error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_detached, at Caddyfile:12"}
+    caddytest.go:124: failed ensuring config is running: unexpected end of JSON input
+    caddytest.go:155: ----------- failed with config -----------
+        {
+          "admin": {
+            "listen": "localhost:2999"
+          },
+          "apps": {
+            "http": {
+              "grace_period": 1,
+              "http_port": 9080,
+              "https_port": 9443,
+              "servers": {
+                "srv0": {
+                  "listen": [
+                    ":9080"
+                  ],
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "encodings": {
+                                    "gzip": {}
+                                  },
+                                  "handler": "encode",
+                                  "prefer": [
+                                    "gzip"
+                                  ]
+                                },
+                                {
+                                  "handler": "reverse_proxy",
+                                  "upstreams": [
+                                    {
+                                      "dial": "127.0.0.1:41407"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "host": [
+                            "localhost"
+                          ]
+                        }
+                      ],
+                      "terminal": true
+                    }
+                  ]
+                }
+              }
+            },
+            "pki": {
+              "certificate_authorities": {
+                "local": {
+                  "install_trust": false
+                }
+              }
+            }
+          }
+        }
+    caddytest.go:155: ----------- failed with config -----------
+        {
+          "admin": {
+            "listen": "localhost:2999"
+          },
+          "apps": {
+            "http": {
+              "grace_period": 1,
+              "http_port": 9080,
+              "https_port": 9443,
+              "servers": {
+                "srv0": {
+                  "listen": [
+                    ":9080"
+                  ],
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "encodings": {
+                                    "gzip": {}
+                                  },
+                                  "handler": "encode",
+                                  "prefer": [
+                                    "gzip"
+                                  ]
+                                },
+                                {
+                                  "handler": "reverse_proxy",
+                                  "upstreams": [
+                                    {
+                                      "dial": "127.0.0.1:41407"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "host": [
+                            "localhost"
+                          ]
+                        }
+                      ],
+                      "terminal": true
+                    }
+                  ]
+                }
+              }
+            },
+            "pki": {
+              "certificate_authorities": {
+                "local": {
+                  "install_trust": false
+                }
+              }
+            }
+          }
+        }
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/caddytest/integration	15.545s
+FAIL
+

@@ -1,0 +1,16 @@
+An independent reviewer, who has not seen your reasoning, blocked task T2 (fix-up 1). Fix the findings below ON TOP of your current change: do not start over, do not revert what works, and touch only the task's files. Where a finding says a case is untested, add the test; where it says the code is wrong, fix the code and test it.
+
+Findings:
+- the reviewer requests 10 change(s): ACC12 is not proven by a test: `caddytest/integration/stream_test.go::TestStreamDetachedSurvivesReload` does not exist in caddytest/integration/stream_test.go
+- [pass 5 coverage] caddytest/integration/stream_test.go:0: ACC12 is not proven by a test: `caddytest/integration/stream_test.go::TestStreamDetachedSurvivesReload` does not exist in caddytest/integration/stream_test.go
+- [pass 5 coverage] caddytest/integration/stream_test.go:0: ACC13 is not proven by a test: `caddytest/integration/stream_test.go::TestStreamDetachedClosesRemovedUpstream` does not exist in caddytest/integration/stream_test.go
+- [pass 5 coverage] caddytest/integration/stream_test.go:0: ACC14 is not proven by a test: `caddytest/integration/stream_test.go::TestStreamDefaultClosedOnReload` does not exist in caddytest/integration/stream_test.go
+- [pass 5 coverage] modules/caddyhttp/reverseproxy/caddyfile_test.go:0: ACC15 is not proven by a test: `modules/caddyhttp/reverseproxy/caddyfile_test.go::TestStreamLogsConfig` does not exist in modules/caddyhttp/reverseproxy/caddyfile_test.go
+- [pass 5 coverage] modules/caddyhttp/responsewriter_test.go:0: ACC16 is not proven by a test: `modules/caddyhttp/responsewriter_test.go::TestResponseRecorderNoWriteAfterHijack` does not exist in modules/caddyhttp/responsewriter_test.go
+- [pass 5 coverage] caddytest/integration/intercept_test.go:0: ACC17 is not proven by a test: `caddytest/integration/intercept_test.go::TestUpgradeThroughIntercept` does not exist in caddytest/integration/intercept_test.go
+- [pass 5 coverage] caddytest/integration/stream_test.go:0: ACC18 is not proven by a test: `caddytest/integration/stream_test.go::TestExtendedConnectH2` does not exist in caddytest/integration/stream_test.go
+- [pass 5 coverage] modules/caddyhttp/reverseproxy/streaming_test.go:0: ACC19 is not proven by a test: `modules/caddyhttp/reverseproxy/streaming_test.go::TestStreamFinishOnce` does not exist in modules/caddyhttp/reverseproxy/streaming_test.go
+- [pass 5 coverage] modules/caddyhttp/reverseproxy/caddyfile_test.go:0: ACC20 is not proven by a test: `modules/caddyhttp/reverseproxy/caddyfile_test.go::TestUnmarshalCaddyfileStreamDetached` does not exist in modules/caddyhttp/reverseproxy/caddyfile_test.go
+- [pass 5 coverage] modules/caddyhttp/reverseproxy/streaming_test.go:598: ACC22 is not proven by a test: `modules/caddyhttp/reverseproxy/streaming_test.go::TestDetachedRegistryPrune` does not exist in modules/caddyhttp/reverseproxy/streaming_test.go
+
+When done, finish again with the same JSON answer (summary, criteria_notes, replan_request). The harness will run the task's tests and review the change again.

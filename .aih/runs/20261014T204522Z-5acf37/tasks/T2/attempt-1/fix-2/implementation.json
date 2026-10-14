@@ -1,0 +1,50 @@
+{
+  "criteria_notes": [
+    {
+      "criterion": "ACC12",
+      "note": "TestStreamDetachedSurvivesReload is at caddytest/integration/stream_test.go:563."
+    },
+    {
+      "criterion": "ACC13",
+      "note": "TestStreamDetachedClosesRemovedUpstream is at stream_test.go:595."
+    },
+    {
+      "criterion": "ACC14",
+      "note": "TestStreamDefaultClosedOnReload is at stream_test.go:640."
+    },
+    {
+      "criterion": "ACC15",
+      "note": "TestDetachedStreamAccessLog is at stream_test.go:742. TestStreamLogsConfig is at modules/caddyhttp/reverseproxy/caddyfile_test.go:127."
+    },
+    {
+      "criterion": "ACC16",
+      "note": "TestResponseRecorderNoWriteAfterHijack is at modules/caddyhttp/responsewriter_test.go:206. TestEncodeUpgradeFinal101 covers the encode writer."
+    },
+    {
+      "criterion": "ACC17",
+      "note": "TestUpgradeThroughIntercept is at caddytest/integration/intercept_test.go:91. TestUpgradeThroughEncode is in stream_test.go."
+    },
+    {
+      "criterion": "ACC18",
+      "note": "TestExtendedConnectH2 is at stream_test.go:819. TestDetachedHTTP11Upgrade covers detached HTTP/1.1 upgrades."
+    },
+    {
+      "criterion": "ACC19",
+      "note": "TestStreamFinishOnce is at modules/caddyhttp/reverseproxy/streaming_test.go:459."
+    },
+    {
+      "criterion": "ACC20",
+      "note": "TestUnmarshalCaddyfileStreamDetached is at caddyfile_test.go:14."
+    },
+    {
+      "criterion": "ACC21",
+      "note": "Doc comments on the JSON fields and in the Caddyfile syntax block describe both options."
+    },
+    {
+      "criterion": "ACC22",
+      "note": "TestDetachedRegistryPrune is at streaming_test.go:598. TestStreamFinishOnce is at line 459."
+    }
+  ],
+  "replan_request": null,
+  "summary": "No change made. I searched the worktree again and all ten tests in the findings are defined in the files they name, including TestDetachedStreamAccessLog (stream_test.go:742). The reviewer's line numbers don't match this worktree (it cites streaming_test.go:483 for TestStreamFinishOnce, which is at 459 here). The reviewer is probably looking at a stale or different snapshot of these files. The tests last passed together under `aih check` (unit packages earlier, integration package on the last run)."
+}

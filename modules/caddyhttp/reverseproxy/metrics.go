@@ -43,8 +43,76 @@ func initReverseProxyMetrics(handler *Handler, registry *prometheus.Registry) {
 		panic(err)
 	}
 
+	streamMetrics.register(registry)
+
 	reverseProxyMetrics.logger = handler.logger.Named("reverse_proxy.metrics")
 }
+
+// streamMetricSet holds the collectors that observe upgraded streams
+// (WebSocket and other Upgrade tunnels, extended CONNECT). The collectors
+// are created up front so that streams are always accounted for; they are
+// attached to a registry when a handler is provisioned.
+type streamMetricSet struct {
+	active   *prometheus.GaugeVec
+	closed   *prometheus.CounterVec
+	duration *prometheus.HistogramVec
+	bytes    *prometheus.CounterVec
+}
+
+// Values of the "direction" label of the stream bytes metric.
+const (
+	streamDirectionToBackend   = "to_backend"
+	streamDirectionFromBackend = "from_backend"
+)
+
+func newStreamMetricSet() *streamMetricSet {
+	const ns, sub = "caddy", "reverse_proxy"
+	return &streamMetricSet{
+		active: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: ns,
+			Subsystem: sub,
+			Name:      "streams_active",
+			Help:      "Number of upgraded streams currently open.",
+		}, []string{"upstream"}),
+		closed: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: ns,
+			Subsystem: sub,
+			Name:      "streams_closed_total",
+			Help:      "Number of upgraded streams that were closed, by result.",
+		}, []string{"upstream", "result"}),
+		duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: ns,
+			Subsystem: sub,
+			Name:      "stream_duration_seconds",
+			Help:      "How long upgraded streams were open.",
+			Buckets:   []float64{0.1, 1, 10, 60, 300, 900, 3600, 21600, 86400},
+		}, []string{"upstream"}),
+		bytes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: ns,
+			Subsystem: sub,
+			Name:      "stream_bytes_total",
+			Help:      "Bytes copied on upgraded streams, by direction relative to the backend.",
+		}, []string{"upstream", "direction"}),
+	}
+}
+
+// register attaches the collectors to registry. Registering collectors
+// that are already registered (another handler, or a reload) is fine. Any
+// other failure is a programming error in the metric definitions and panics,
+// like the other reverse proxy metrics.
+func (m *streamMetricSet) register(registry prometheus.Registerer) {
+	for _, c := range []prometheus.Collector{m.active, m.closed, m.duration, m.bytes} {
+		if err := registry.Register(c); err != nil {
+			var already prometheus.AlreadyRegisteredError
+			if !errors.As(err, &already) {
+				panic(err)
+			}
+		}
+	}
+}
+
+// streamMetrics are the process-wide stream metrics.
+var streamMetrics = newStreamMetricSet()
 
 type metricsUpstreamsHealthyUpdater struct {
 	handler *Handler

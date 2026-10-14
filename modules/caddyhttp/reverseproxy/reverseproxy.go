@@ -199,6 +199,24 @@ type Handler struct {
 	// by the previous config closing. Default: no delay.
 	StreamCloseDelay caddy.Duration `json:"stream_close_delay,omitempty"`
 
+	// If true, upgraded streams (WebSockets and other Upgrade tunnels)
+	// are detached from the lifecycle of this config: they are not closed
+	// when the config is reloaded, and stay open until they end by
+	// themselves (or stream_timeout elapses). Only when a reload removes
+	// the upstream of a stream is that stream closed, so streams to
+	// upstreams that are kept survive. This makes stream_close_delay
+	// irrelevant. Streams to dynamic upstreams are never closed by a
+	// reload. Default: upgraded streams are closed when the config is
+	// unloaded, honoring stream_close_delay.
+	StreamDetached bool `json:"stream_detached,omitempty"`
+
+	// Configures the logging of upgraded streams: whether the upgrade
+	// handshake is logged in the access log, and at which level the close
+	// of a stream is logged. The close of a stream is logged to the same
+	// logger(s) as the access log (see the `logger_name` of the `log`
+	// directive).
+	StreamLogs *StreamLogs `json:"stream_logs,omitempty"`
+
 	// If configured, rewrites the copy of the upstream request.
 	// Allows changing the request method and URI (path and query).
 	// Since the rewrite is applied to the copy, it does not persist
@@ -263,7 +281,10 @@ type Handler struct {
 	connectionsCloseTimer *time.Timer
 	connectionsMu         *sync.Mutex
 
-	ctx    caddy.Context
+	// level at which closed streams are logged
+	streamLogLevel zapcore.Level
+
+	ctx   caddy.Context
 	logger *zap.Logger
 	events *caddyevents.App
 }
@@ -287,6 +308,9 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	h.logger = ctx.Logger()
 	h.connections = make(map[io.ReadWriteCloser]openConnection)
 	h.connectionsMu = new(sync.Mutex)
+
+	// an invalid level is reported by Validate
+	h.streamLogLevel, _ = h.StreamLogs.zapLevel()
 
 	// warn about unsafe buffering config
 	if h.RequestBuffers == -1 || h.ResponseBuffers == -1 {
@@ -456,13 +480,24 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	return nil
 }
 
+// Validate ensures that h has a valid configuration.
+func (h *Handler) Validate() error {
+	_, err := h.StreamLogs.zapLevel()
+	return err
+}
+
 // Cleanup cleans up the resources made by h.
 func (h *Handler) Cleanup() error {
 	err := h.cleanupConnections()
 
-	// remove hosts from our config from the pool
+	// remove hosts from our config from the pool; when that was the last
+	// use of an upstream, it is gone from the config for good, and the
+	// detached streams to it must go too (the ones to upstreams that are
+	// still used by the new config are kept)
 	for _, upstream := range h.Upstreams {
-		_, _ = hosts.Delete(upstream.String())
+		if deleted, _ := hosts.Delete(upstream.String()); deleted {
+			detachedStreams.closeUpstream(upstream.String())
+		}
 	}
 
 	return err
@@ -2093,5 +2128,6 @@ var errNoUpstream = fmt.Errorf("no upstreams available")
 var (
 	_ caddy.Provisioner           = (*Handler)(nil)
 	_ caddy.CleanerUpper          = (*Handler)(nil)
+	_ caddy.Validator             = (*Handler)(nil)
 	_ caddyhttp.MiddlewareHandler = (*Handler)(nil)
 )

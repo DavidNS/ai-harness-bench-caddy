@@ -70,6 +70,7 @@ type responseRecorder struct {
 	size         int
 	wroteHeader  bool
 	stream       bool
+	hijacked     bool
 
 	readSize *int
 }
@@ -144,9 +145,11 @@ func NewResponseRecorder(w http.ResponseWriter, buf *bytes.Buffer, shouldBuffer 
 
 // WriteHeader writes the headers with statusCode to the wrapped
 // ResponseWriter unless the response is to be buffered instead.
-// 1xx responses are never buffered.
+// 1xx responses are never buffered. A 101 Switching Protocols
+// response is final and is never buffered either; nothing is
+// written once the connection has been hijacked.
 func (rr *responseRecorder) WriteHeader(statusCode int) {
-	if rr.wroteHeader {
+	if rr.wroteHeader || rr.hijacked {
 		return
 	}
 
@@ -155,14 +158,17 @@ func (rr *responseRecorder) WriteHeader(statusCode int) {
 	rr.statusCode = statusCode
 
 	// decide whether we should buffer the response
-	if rr.shouldBuffer == nil {
+	switch {
+	case statusCode == http.StatusSwitchingProtocols:
 		rr.stream = true
-	} else {
+	case rr.shouldBuffer == nil:
+		rr.stream = true
+	default:
 		rr.stream = !rr.shouldBuffer(rr.statusCode, rr.ResponseWriterWrapper.Header())
 	}
 
-	// 1xx responses aren't final; just informational
-	if statusCode < 100 || statusCode > 199 {
+	// other 1xx responses aren't final; just informational
+	if statusCode < 100 || statusCode > 199 || statusCode == http.StatusSwitchingProtocols {
 		rr.wroteHeader = true
 	}
 
@@ -173,6 +179,9 @@ func (rr *responseRecorder) WriteHeader(statusCode int) {
 }
 
 func (rr *responseRecorder) Write(data []byte) (int, error) {
+	if rr.hijacked {
+		return 0, http.ErrHijacked
+	}
 	rr.WriteHeader(http.StatusOK)
 	var n int
 	var err error
@@ -187,6 +196,9 @@ func (rr *responseRecorder) Write(data []byte) (int, error) {
 }
 
 func (rr *responseRecorder) ReadFrom(r io.Reader) (int64, error) {
+	if rr.hijacked {
+		return 0, http.ErrHijacked
+	}
 	rr.WriteHeader(http.StatusOK)
 	var n int64
 	var err error
@@ -258,6 +270,12 @@ func (rr *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	// the connection now belongs to the hijacker: the response is
+	// over, so nothing may be buffered or written to it again
+	rr.hijacked = true
+	rr.stream = true
+	rr.wroteHeader = true
+
 	// Per http documentation, returned bufio.Writer is empty, but bufio.Read maybe not
 	conn = &hijackedConn{conn, rr}
 	brw.Writer.Reset(conn)
@@ -273,6 +291,18 @@ func (rr *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 		brw.Reader.Reset(conn)
 	}
 	return conn, brw, nil
+}
+
+// RawConn returns the connection underneath conn if conn was returned by
+// the Hijack method of a response recorder, which wraps the connection to
+// track the response size. Callers that copy bytes for a long time (such
+// as a proxy of an upgraded stream) should do so on the raw connection
+// rather than through the recorder. Any other conn is returned as is.
+func RawConn(conn net.Conn) net.Conn {
+	if hc, ok := conn.(*hijackedConn); ok {
+		return hc.Conn
+	}
+	return conn
 }
 
 // used to track the size of hijacked response writers

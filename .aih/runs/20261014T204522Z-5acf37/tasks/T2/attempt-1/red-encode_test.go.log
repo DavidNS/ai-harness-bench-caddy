@@ -1,0 +1,13 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261014T204518Z/worktrees/20261014T204522Z-5acf37-red golang:1.27-bookworm go test -count=1 -timeout 30m ./modules/caddyhttp/encode
+--- FAIL: TestEncodeUpgradeFinal101 (0.00s)
+    encode_test.go:72: Write() err = <nil>, want http: connection has been hijacked
+    encode_test.go:75: ReadFrom() err = <nil>, want http: connection has been hijacked
+    encode_test.go:82: statuses written = [101 200], want only the 101
+    encode_test.go:85: body written after 101: "latelate"
+--- FAIL: TestEncodeNoWriteAfterHijack (0.00s)
+    encode_test.go:105: Write() err = <nil>, want http: connection has been hijacked
+    encode_test.go:111: written after hijack: statuses [200], body "late"
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/modules/caddyhttp/encode	0.399s
+FAIL
+

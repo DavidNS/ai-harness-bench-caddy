@@ -1,11 +1,16 @@
 package encode
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -29,6 +34,96 @@ type discardResponseWriter struct {
 func (w *discardResponseWriter) Header() http.Header         { return w.header }
 func (w *discardResponseWriter) Write(p []byte) (int, error) { return len(p), nil }
 func (w *discardResponseWriter) WriteHeader(int)             {}
+
+// hijackableResponseWriter is a http.ResponseWriter that records what is
+// written to it, and that can be hijacked unless hijackErr is set.
+type hijackableResponseWriter struct {
+	header    http.Header
+	statuses  []int
+	body      bytes.Buffer
+	hijackErr error
+}
+
+func (w *hijackableResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+func (w *hijackableResponseWriter) WriteHeader(status int)       { w.statuses = append(w.statuses, status) }
+func (w *hijackableResponseWriter) Write(p []byte) (int, error) { return w.body.Write(p) }
+func (w *hijackableResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if w.hijackErr != nil {
+		return nil, nil, w.hijackErr
+	}
+	conn, _ := net.Pipe()
+	return conn, bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)), nil
+}
+
+// TestEncodeUpgradeFinal101 checks that a 101 is the final response of the
+// encode writer: it is written at once, and nothing is written after it.
+func TestEncodeUpgradeFinal101(t *testing.T) {
+	w := new(hijackableResponseWriter)
+	rw := new(Encode).openResponseWriter("gzip", w, false)
+
+	rw.WriteHeader(http.StatusSwitchingProtocols)
+	rw.WriteHeader(http.StatusOK)
+	if _, err := rw.Write([]byte("late")); !errors.Is(err, http.ErrHijacked) {
+		t.Errorf("Write() err = %v, want %v", err, http.ErrHijacked)
+	}
+	if _, err := rw.ReadFrom(strings.NewReader("late")); !errors.Is(err, http.ErrHijacked) {
+		t.Errorf("ReadFrom() err = %v, want %v", err, http.ErrHijacked)
+	}
+	if err := rw.Close(); err != nil {
+		t.Errorf("Close() err = %v", err)
+	}
+
+	if !slices.Equal(w.statuses, []int{http.StatusSwitchingProtocols}) {
+		t.Errorf("statuses written = %v, want only the 101", w.statuses)
+	}
+	if w.body.Len() != 0 {
+		t.Errorf("body written after 101: %q", w.body.String())
+	}
+}
+
+// TestEncodeNoWriteAfterHijack checks that nothing is written through the
+// encode writer once the connection has been hijacked, and that a failed
+// hijack does not stop the response.
+func TestEncodeNoWriteAfterHijack(t *testing.T) {
+	w := new(hijackableResponseWriter)
+	rw := new(Encode).openResponseWriter("gzip", w, false)
+	rw.WriteHeader(http.StatusAccepted) // pending, would be written by Close
+
+	conn, _, err := http.NewResponseController(rw).Hijack()
+	if err != nil {
+		t.Fatalf("Hijack() err = %v", err)
+	}
+	defer conn.Close()
+
+	rw.WriteHeader(http.StatusOK)
+	if _, err := rw.Write([]byte("late")); !errors.Is(err, http.ErrHijacked) {
+		t.Errorf("Write() err = %v, want %v", err, http.ErrHijacked)
+	}
+	if err := rw.Close(); err != nil {
+		t.Errorf("Close() err = %v", err)
+	}
+	if len(w.statuses) != 0 || w.body.Len() != 0 {
+		t.Errorf("written after hijack: statuses %v, body %q", w.statuses, w.body.String())
+	}
+
+	failing := &hijackableResponseWriter{hijackErr: errors.New("no way")}
+	rw = new(Encode).openResponseWriter("gzip", failing, false)
+	if _, _, err := http.NewResponseController(rw).Hijack(); err == nil {
+		t.Fatal("Hijack() err = nil, want the error of the underlying writer")
+	}
+	rw.WriteHeader(http.StatusTeapot)
+	if _, err := rw.Write([]byte("short and stout")); err != nil {
+		t.Errorf("Write() err = %v after a failed hijack", err)
+	}
+	if !slices.Equal(failing.statuses, []int{http.StatusTeapot}) || failing.body.String() != "short and stout" {
+		t.Errorf("got %v %q, want the response to be written", failing.statuses, failing.body.String())
+	}
+}
 
 // BenchmarkResponseWriterWriteHeader covers the branches inside WriteHeader:
 // the plain/common case, the SSE Content-Type check (both when it doesn't

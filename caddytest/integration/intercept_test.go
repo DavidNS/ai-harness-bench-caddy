@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/caddyserver/caddy/v2/caddytest"
@@ -82,6 +83,47 @@ func TestInterceptReplaceStatusWithoutMatcher(t *testing.T) {
 	`, "caddyfile")
 
 	tester.AssertGetResponse("http://localhost:9080/forbidden", 200, "denied")
+}
+
+// TestUpgradeThroughIntercept checks that upgrades go through intercept with
+// a handle_response that would match any response: the 101 is final, it is not
+// buffered nor handled, and the proxy copies bytes on the raw connection.
+func TestUpgradeThroughIntercept(t *testing.T) {
+	backend := startUpgradeBackend(t)
+	tester := caddytest.NewTester(t)
+
+	for name, proxyOptions := range map[string]string{"default": "", "detached": "stream_detached"} {
+		t.Run(name, func(t *testing.T) {
+			tester.InitServer(streamTestGlobals+fmt.Sprintf(`
+			localhost:9080 {
+				intercept {
+					handle_response {
+						header intercepted yes
+						respond "intercepted" 200
+					}
+				}
+				reverse_proxy %s {
+					%s
+				}
+			}
+			`, backend, proxyOptions), "caddyfile")
+
+			// responses are intercepted...
+			r, _ := tester.AssertGetResponse("http://localhost:9080/plain", 200, "intercepted")
+			if r.Header.Get("intercepted") != "yes" {
+				t.Errorf(`header "intercepted" value is not "yes": %s`, r.Header.Get("intercepted"))
+			}
+
+			// ...but not the switch to a stream
+			client := dialUpgrade(t, "/", nil)
+			if got := client.resp.Header.Get("Intercepted"); got != "" {
+				t.Errorf("the 101 response was handled by intercept: header %q", got)
+			}
+			client.echo(t, "through intercept")
+			client.echo(t, "and again")
+			client.conn.Close()
+		})
+	}
 }
 
 func TestInterceptReplaceStatusNotMatched(t *testing.T) {

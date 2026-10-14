@@ -26,8 +26,10 @@ import (
 	"io"
 	weakrand "math/rand/v2"
 	"mime"
+	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -125,9 +127,12 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 			c.Write(zap.Int("http_version", req.ProtoMajor))
 		}
 
-		var hijackErr error
+		var (
+			hijacked  net.Conn
+			hijackErr error
+		)
 		//nolint:bodyclose
-		conn, brw, hijackErr = http.NewResponseController(rw).Hijack()
+		hijacked, brw, hijackErr = http.NewResponseController(rw).Hijack()
 		if errors.Is(hijackErr, http.ErrNotSupported) {
 			if c := h.logger.Check(zap.ErrorLevel, "can't switch protocols using non-Hijacker ResponseWriter"); c != nil {
 				c.Write(zap.String("type", fmt.Sprintf("%T", rw)))
@@ -141,6 +146,21 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 			}
 			return
 		}
+
+		// copy on the raw connection, not through a recording response
+		// writer that would account and buffer for a response that is over
+		conn = caddyhttp.RawConn(hijacked)
+	}
+
+	stream := newStreamState(upstreamKey(req.Context()), func(sum streamSummary) {
+		if c := logger.Check(zapcore.DebugLevel, "connection closed"); c != nil {
+			c.Write(zap.Duration("duration", sum.duration))
+		}
+		h.logStreamClosed(req, sum)
+	})
+
+	if h.StreamLogs != nil && h.StreamLogs.SkipHandshake {
+		caddyhttp.SetVar(req.Context(), caddyhttp.LogSkipVar, true)
 	}
 
 	// adopted from https://github.com/golang/go/commit/8bcf2834afdf6a1f7937390903a41518715ef6f5
@@ -150,18 +170,22 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 		// See issue https://golang.org/issue/35559.
 		select {
 		case <-req.Context().Done():
+			stream.setReason(streamResultCanceled)
 		case <-backConnCloseCh:
 		}
 		backConn.Close()
 	}()
 	defer close(backConnCloseCh)
 
-	start := time.Now()
+	// result is what the stream is accounted with, unless a close path
+	// that ran first (cancellation, reload) already gave a reason
+	result := streamResultError
 	defer func() {
 		conn.Close()
-		if c := logger.Check(zapcore.DebugLevel, "connection closed"); c != nil {
-			c.Write(zap.Duration("duration", time.Since(start)))
-		}
+		backConn.Close()
+		// wait for the copiers, so the byte counts are final
+		wg.Wait()
+		stream.finish(result)
 	}()
 
 	if err := brw.Flush(); err != nil {
@@ -182,6 +206,7 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 			}
 			return
 		}
+		stream.toBackend.Add(int64(len(data)))
 	}
 
 	// Ensure the hijacked client connection, and the new connection established
@@ -199,16 +224,25 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 		}
 		return nil
 	}
-	deleteFrontConn := h.registerConnection(conn, gracefulClose(conn, false))
-	deleteBackConn := h.registerConnection(backConn, gracefulClose(backConn, true))
-	defer deleteFrontConn()
-	defer deleteBackConn()
+
+	// Detached streams are not tied to this handler (and so to the config it
+	// belongs to): they are tracked process-wide, and only closed when their
+	// upstream is removed from the config.
+	front := openConnection{conn: conn, gracefulClose: gracefulClose(conn, false), stream: stream}
+	back := openConnection{conn: backConn, gracefulClose: gracefulClose(backConn, true), stream: stream}
+	if h.StreamDetached {
+		defer detachedStreams.add(stream.upstream, front, back)()
+	} else {
+		defer h.registerConnection(front)()
+		defer h.registerConnection(back)()
+	}
 
 	spc := switchProtocolCopier{
 		user:       conn,
 		backend:    backConn,
 		wg:         wg,
 		bufferSize: h.StreamBufferSize,
+		stream:     stream,
 	}
 
 	// setup the timeout if requested
@@ -261,9 +295,11 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 			if c := logger.Check(zapcore.DebugLevel, "stream timed out"); c != nil {
 				c.Write(zap.Time("timeout", time))
 			}
+			result = streamResultTimeout
 			return
 		}
 	}
+	result = streamResultCompleted
 }
 
 // flushInterval returns the p.FlushInterval value, conditionally
@@ -414,13 +450,13 @@ func (h Handler) copyBuffer(dst io.Writer, src io.Reader, buf []byte, logger *za
 // connections dialed to backends don't close when server is shut down.
 // The caller should call the returned delete() function when the
 // connection is done to remove it from memory.
-func (h *Handler) registerConnection(conn io.ReadWriteCloser, gracefulClose func() error) (del func()) {
+func (h *Handler) registerConnection(oc openConnection) (del func()) {
 	h.connectionsMu.Lock()
-	h.connections[conn] = openConnection{conn, gracefulClose}
+	h.connections[oc.conn] = oc
 	h.connectionsMu.Unlock()
 	return func() {
 		h.connectionsMu.Lock()
-		delete(h.connections, conn)
+		delete(h.connections, oc.conn)
 		// if there is no connection left before the connections close timer fires
 		if len(h.connections) == 0 && h.connectionsCloseTimer != nil {
 			// we release the timer that holds the reference to Handler
@@ -440,17 +476,11 @@ func (h *Handler) closeConnections() error {
 	defer h.connectionsMu.Unlock()
 
 	for _, oc := range h.connections {
-		if oc.gracefulClose != nil {
-			// this is potentially blocking while we have the lock on the connections
-			// map, but that should be OK since the server has in theory shut down
-			// and we are no longer using the connections map
-			gracefulErr := oc.gracefulClose()
-			if gracefulErr != nil && err == nil {
-				err = gracefulErr
-			}
-		}
-		closeErr := oc.conn.Close()
-		if closeErr != nil && err == nil {
+		oc.stream.setReason(streamResultShutdown)
+		// this is potentially blocking while we have the lock on the connections
+		// map, but that should be OK since the server has in theory shut down
+		// and we are no longer using the connections map
+		if closeErr := oc.close(); closeErr != nil && err == nil {
 			err = closeErr
 		}
 	}
@@ -602,10 +632,226 @@ func isWebsocket(r *http.Request) bool {
 }
 
 // openConnection maps an open connection to
-// an optional function for graceful close.
+// an optional function for graceful close,
+// and to the stream it belongs to.
 type openConnection struct {
 	conn          io.ReadWriteCloser
 	gracefulClose func() error
+	stream        *streamState
+}
+
+// close gracefully closes the connection, if it can be, then closes it.
+// It returns the first error that occurred.
+func (oc openConnection) close() error {
+	var err error
+	if oc.gracefulClose != nil {
+		err = oc.gracefulClose()
+	}
+	if closeErr := oc.conn.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
+	return err
+}
+
+// Results an upgraded stream is accounted with. They are the values
+// of the "result" label of the closed streams metric.
+const (
+	streamResultCompleted = "completed"        // both directions ended cleanly
+	streamResultError     = "error"            // a copy failed or a connection broke
+	streamResultTimeout   = "timeout"          // stream_timeout elapsed
+	streamResultCanceled  = "canceled"         // the client request was canceled
+	streamResultShutdown  = "shutdown"         // closed because the config was unloaded
+	streamResultRemoved   = "upstream_removed" // closed because the upstream left the config
+)
+
+// streamSummary is what is known about a stream once it is over.
+type streamSummary struct {
+	upstream    string
+	result      string
+	duration    time.Duration
+	toBackend   int64
+	fromBackend int64
+}
+
+// streamState accounts for one upgraded stream. A stream can end in
+// several racing ways (clean EOF, copy error, timeout, cancellation,
+// reload), so everything that must happen exactly once at the end of
+// a stream (metrics, close log) is done by finish, which runs it once.
+type streamState struct {
+	upstream string
+	start    time.Time
+	onFinish func(streamSummary)
+
+	toBackend   atomic.Int64
+	fromBackend atomic.Int64
+
+	mu     sync.Mutex
+	reason string // first reason given for the end of the stream
+
+	once    sync.Once
+	summary streamSummary
+}
+
+// newStreamState starts accounting for a stream to upstream: it counts as
+// active until finish is called. onFinish is called once, when it ends.
+func newStreamState(upstream string, onFinish func(streamSummary)) *streamState {
+	streamMetrics.active.WithLabelValues(upstream).Inc()
+	return &streamState{upstream: upstream, start: time.Now(), onFinish: onFinish}
+}
+
+// setReason records why the stream is ending, if no reason was
+// recorded yet: the first close path to run determines the result.
+func (s *streamState) setReason(reason string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.reason == "" {
+		s.reason = reason
+	}
+}
+
+// finish ends the stream with result, unless a reason was recorded before,
+// then updates the metrics and calls onFinish. Only the first call does
+// anything, whichever close path it comes from; later calls just return
+// the summary of the first.
+func (s *streamState) finish(result string) streamSummary {
+	s.once.Do(func() {
+		s.setReason(result)
+		s.mu.Lock()
+		s.summary = streamSummary{
+			upstream:    s.upstream,
+			result:      s.reason,
+			duration:    time.Since(s.start),
+			toBackend:   s.toBackend.Load(),
+			fromBackend: s.fromBackend.Load(),
+		}
+		s.mu.Unlock()
+
+		streamMetrics.active.WithLabelValues(s.upstream).Dec()
+		streamMetrics.closed.WithLabelValues(s.upstream, s.summary.result).Inc()
+		streamMetrics.duration.WithLabelValues(s.upstream).Observe(s.summary.duration.Seconds())
+		streamMetrics.bytes.WithLabelValues(s.upstream, streamDirectionToBackend).Add(float64(s.summary.toBackend))
+		streamMetrics.bytes.WithLabelValues(s.upstream, streamDirectionFromBackend).Add(float64(s.summary.fromBackend))
+		s.onFinish(s.summary)
+	})
+	return s.summary
+}
+
+// upstreamKey returns the key of the upstream that the request of ctx was
+// proxied to, as used for the upstream pool, or an empty string.
+func upstreamKey(ctx context.Context) string {
+	if di, ok := GetDialInfo(ctx); ok && di.Upstream != nil {
+		return di.Upstream.String()
+	}
+	return ""
+}
+
+// detachedStream is a registered stream that is not tied to the config
+// of the handler that proxies it.
+type detachedStream struct {
+	upstream string
+	conns    []openConnection
+}
+
+// detachedRegistry tracks upgraded streams of handlers with stream_detached
+// set. It is process-wide because those streams outlive the handler (and
+// config) that started them; the only thing that ends them from the outside
+// is the removal of their upstream.
+type detachedRegistry struct {
+	mu      sync.Mutex
+	streams map[*detachedStream]struct{}
+}
+
+var detachedStreams = &detachedRegistry{streams: make(map[*detachedStream]struct{})}
+
+// add registers a stream to upstream made of conns. The returned
+// function removes it again, when the stream is over.
+func (r *detachedRegistry) add(upstream string, conns ...openConnection) (remove func()) {
+	ds := &detachedStream{upstream: upstream, conns: conns}
+	r.mu.Lock()
+	r.streams[ds] = struct{}{}
+	r.mu.Unlock()
+	return func() {
+		r.mu.Lock()
+		delete(r.streams, ds)
+		r.mu.Unlock()
+	}
+}
+
+// closeUpstream closes the registered streams to upstream, and returns
+// how many there were. Errors closing are not reported: the connections
+// of a stream that is going away are often already gone.
+func (r *detachedRegistry) closeUpstream(upstream string) int {
+	var doomed []*detachedStream
+	r.mu.Lock()
+	for ds := range r.streams {
+		if ds.upstream == upstream {
+			doomed = append(doomed, ds)
+			delete(r.streams, ds)
+		}
+	}
+	r.mu.Unlock()
+
+	// closing may block, so it is not done holding the lock
+	for _, ds := range doomed {
+		for _, oc := range ds.conns {
+			oc.stream.setReason(streamResultRemoved)
+			_ = oc.close()
+		}
+	}
+	return len(doomed)
+}
+
+// count returns the number of registered streams.
+func (r *detachedRegistry) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.streams)
+}
+
+// logStreamClosed logs that a stream is over to the access loggers of
+// the server, at the level configured with stream_logs (default DEBUG),
+// so that it can be routed like the access log of the request is.
+func (h *Handler) logStreamClosed(req *http.Request, sum streamSummary) {
+	srv, ok := req.Context().Value(caddyhttp.ServerCtxKey).(*caddyhttp.Server)
+	if !ok {
+		return
+	}
+	for _, logger := range srv.AccessLoggers(req) {
+		if c := logger.Check(h.streamLogLevel, "stream closed"); c != nil {
+			c.Write(
+				zap.String("upstream", sum.upstream),
+				zap.String("result", sum.result),
+				zap.Duration("duration", sum.duration),
+				zap.Int64("bytes_to_backend", sum.toBackend),
+				zap.Int64("bytes_from_backend", sum.fromBackend),
+			)
+		}
+	}
+}
+
+// StreamLogs configures the logging of upgraded streams.
+type StreamLogs struct {
+	// If true, the upgrade handshake (the request that is switched
+	// to a stream) is not logged in the access log. The close of the
+	// stream is still logged. Default: the handshake is logged.
+	SkipHandshake bool `json:"skip_handshake,omitempty"`
+
+	// The level at which the close of a stream is logged to the access
+	// log. Default: DEBUG.
+	Level string `json:"level,omitempty"`
+}
+
+// zapLevel returns the level configured, or DEBUG if none is. It also
+// returns an error if the level is not valid.
+func (l *StreamLogs) zapLevel() (zapcore.Level, error) {
+	if l == nil || l.Level == "" {
+		return zapcore.DebugLevel, nil
+	}
+	var level zapcore.Level
+	if err := level.UnmarshalText([]byte(l.Level)); err != nil {
+		return zapcore.DebugLevel, fmt.Errorf("invalid stream_logs level '%s': %v", l.Level, err)
+	}
+	return level, nil
 }
 
 type maxLatencyWriter struct {
@@ -676,6 +922,7 @@ type switchProtocolCopier struct {
 	user, backend io.ReadWriteCloser
 	wg            *sync.WaitGroup
 	bufferSize    int
+	stream        *streamState // if set, the bytes copied are counted on it
 }
 
 // errCopyDone is reported by a direction that ended at a clean EOF on a
@@ -685,7 +932,11 @@ var errCopyDone = errors.New("hijacked connection copy complete")
 
 func (c switchProtocolCopier) copyFromBackend(errc chan<- error) {
 	defer c.wg.Done()
-	if _, err := io.CopyBuffer(c.user, c.backend, c.buffer()); err != nil {
+	n, err := io.CopyBuffer(c.user, c.backend, c.buffer())
+	if c.stream != nil {
+		c.stream.fromBackend.Add(n)
+	}
+	if err != nil {
 		errc <- err
 		return
 	}
@@ -701,7 +952,11 @@ func (c switchProtocolCopier) copyFromBackend(errc chan<- error) {
 
 func (c switchProtocolCopier) copyToBackend(errc chan<- error) {
 	defer c.wg.Done()
-	if _, err := io.CopyBuffer(c.backend, c.user, c.buffer()); err != nil {
+	n, err := io.CopyBuffer(c.backend, c.user, c.buffer())
+	if c.stream != nil {
+		c.stream.toBackend.Add(n)
+	}
+	if err != nil {
 		errc <- err
 		return
 	}
