@@ -1,0 +1,214 @@
+{
+  "attempts_total": 2,
+  "base_sha": "04fe16102872eba7c017b495a9006fddae4dbdc4",
+  "delivery": null,
+  "error": {
+    "code": "run.aborted",
+    "message": "review.changes_requested: the reviewer requests 11 change(s): `ctx   caddy.Context` is misaligned with `logger`/`events` below it (the original was aligned), so gofmt and golangci-lint will fail; run gofmt."
+  },
+  "gate_failures": [
+    {
+      "attempt": 1,
+      "codes": [
+        "change.replan_requested"
+      ],
+      "gate": "change.implemented",
+      "task": "T1"
+    },
+    {
+      "attempt": 1,
+      "codes": [
+        "review.changes_requested"
+      ],
+      "gate": "review.approved",
+      "task": "T2"
+    },
+    {
+      "attempt": 1,
+      "codes": [
+        "review.changes_requested"
+      ],
+      "gate": "review.approved",
+      "task": "T2"
+    },
+    {
+      "attempt": 1,
+      "codes": [
+        "review.changes_requested"
+      ],
+      "gate": "review.approved",
+      "task": "T2"
+    }
+  ],
+  "head": null,
+  "human_decisions": [
+    {
+      "actor": "policy",
+      "decision": "approve",
+      "gate": "human.plan_approved"
+    },
+    {
+      "actor": "policy",
+      "decision": "approve",
+      "gate": "human.plan_approved"
+    },
+    {
+      "actor": "policy",
+      "decision": "abort",
+      "gate": "human.escalation"
+    }
+  ],
+  "models": [
+    "claude-sonnet-5-5"
+  ],
+  "plan_tasks": [
+    {
+      "files": [
+        "modules/caddyhttp/reverseproxy/reverseproxy.go",
+        "modules/caddyhttp/reverseproxy/streaming.go",
+        "modules/caddyhttp/reverseproxy/caddyfile.go",
+        "modules/caddyhttp/reverseproxy/metrics.go",
+        "modules/caddyhttp/responsewriter.go",
+        "modules/caddyhttp/encode/encode.go",
+        "modules/caddyhttp/intercept/intercept.go",
+        "modules/caddyhttp/server.go",
+        "modules/caddyhttp/reverseproxy/streaming_test.go",
+        "modules/caddyhttp/reverseproxy/caddyfile_test.go",
+        "modules/caddyhttp/responsewriter_test.go",
+        "modules/caddyhttp/encode/encode_test.go",
+        "caddytest/integration/stream_test.go",
+        "caddytest/integration/intercept_test.go"
+      ],
+      "id": "T2",
+      "key": "T1",
+      "tests": [
+        "modules/caddyhttp/reverseproxy/streaming_test.go",
+        "modules/caddyhttp/reverseproxy/caddyfile_test.go",
+        "modules/caddyhttp/responsewriter_test.go",
+        "modules/caddyhttp/encode/encode_test.go",
+        "caddytest/integration/stream_test.go",
+        "caddytest/integration/intercept_test.go"
+      ]
+    }
+  ],
+  "plan_version": 2,
+  "run_dir": "C:\\Users\\david\\git\\ai-harness-e2e-benchmak\\targets\\.aih\\20261014T204518Z\\runs\\20261014T204522Z-5acf37",
+  "run_id": "20261014T204522Z-5acf37",
+  "schema_version": 1,
+  "sessions": 11,
+  "status": "aborted",
+  "tasks": [
+    {
+      "advisories": [
+        {
+          "file": "modules/caddyhttp/reverseproxy/reverseproxy.go",
+          "line": 206,
+          "pass": 2,
+          "severity": "advisory",
+          "text": "The documented rule that streams to dynamic upstreams are never closed by a reload (empty upstream key) has no test."
+        },
+        {
+          "file": "caddytest/integration/stream_test.go",
+          "line": 0,
+          "pass": 2,
+          "severity": "advisory",
+          "text": "No integration test covers detached streams with stream_timeout, or the shutdown of detached streams when Caddy stops."
+        },
+        {
+          "file": "modules/caddyhttp/responsewriter_test.go",
+          "line": 225,
+          "pass": 4,
+          "severity": "advisory",
+          "text": "The `equalInts` helper duplicates `slices.Equal`."
+        }
+      ],
+      "attempts": 1,
+      "coverage": [
+        {
+          "criterion": "ACC12",
+          "line": 531,
+          "note": "Echoes on the same stream across two reloads that keep the upstream.",
+          "status": "covered",
+          "test": "caddytest/integration/stream_test.go::TestStreamDetachedSurvivesReload"
+        },
+        {
+          "criterion": "ACC13",
+          "line": 581,
+          "note": "Stream A is closed and stream B keeps echoing after the reload that removes A's upstream.",
+          "status": "covered",
+          "test": "caddytest/integration/stream_test.go::TestStreamDetachedClosesRemovedUpstream"
+        },
+        {
+          "criterion": "ACC14",
+          "line": 613,
+          "note": "Covers both the immediate close and the close after stream_close_delay.",
+          "status": "covered",
+          "test": "caddytest/integration/stream_test.go::TestStreamDefaultClosedOnReload"
+        },
+        {
+          "criterion": "ACC15",
+          "line": 702,
+          "note": "Checks the logger name, skip_handshake suppression, the handshake logged by default, and the DEBUG default (only one close entry appears). TestStreamLogsConfig covers parsing in the Caddyfile and JSON.",
+          "status": "covered",
+          "test": "caddytest/integration/stream_test.go::TestDetachedStreamAccessLog"
+        },
+        {
+          "criterion": "ACC16",
+          "line": 225,
+          "note": "The encode writer side is covered by TestEncodeUpgradeFinal101 and TestEncodeNoWriteAfterHijack.",
+          "status": "covered",
+          "test": "modules/caddyhttp/responsewriter_test.go::TestResponseRecorderNoWriteAfterHijack"
+        },
+        {
+          "criterion": "ACC17",
+          "line": 122,
+          "note": "Integration echo through intercept and encode. The raw-conn copy is covered by TestRawConn.",
+          "status": "covered",
+          "test": "caddytest/integration/intercept_test.go::TestUpgradeThroughIntercept"
+        },
+        {
+          "criterion": "ACC18",
+          "line": 765,
+          "note": "Uses a real h2 framer client in a child process with GODEBUG set. HTTP/1.1 detached upgrades are covered by TestDetachedHTTP11Upgrade.",
+          "status": "covered",
+          "test": "caddytest/integration/stream_test.go::TestExtendedConnectH2"
+        },
+        {
+          "criterion": "ACC19",
+          "line": 483,
+          "note": "16 racing finish calls produce one onFinish call and one count each in the closed, active, duration and bytes metrics.",
+          "status": "covered",
+          "test": "modules/caddyhttp/reverseproxy/streaming_test.go::TestStreamFinishOnce"
+        },
+        {
+          "criterion": "ACC20",
+          "line": 105,
+          "note": "Parses both fields and rejects unknown subdirectives and bad argument counts.",
+          "status": "covered",
+          "test": "modules/caddyhttp/reverseproxy/caddyfile_test.go::TestUnmarshalCaddyfileStreamDetached"
+        },
+        {
+          "criterion": "ACC22",
+          "line": 598,
+          "note": "Prune-by-upstream is tested here, and TestHandlerCleanupPrunesRemovedUpstreams adds the Cleanup path. Finish-once is in TestStreamFinishOnce.",
+          "status": "covered",
+          "test": "modules/caddyhttp/reverseproxy/streaming_test.go::TestDetachedRegistryPrune"
+        }
+      ],
+      "id": "T2",
+      "review_rounds": 3,
+      "session_id": "d545c158-ceac-4300-a450-e12f5905ef14",
+      "status": "in_progress"
+    }
+  ],
+  "usage": {
+    "cache_creation_input_tokens": 782910.0,
+    "cache_read_input_tokens": 28937093.0,
+    "cost_usd": 9.400151,
+    "duration_ms": 2960850,
+    "input_tokens": 356.0,
+    "num_turns": 368,
+    "output_tokens": 337409.0
+  },
+  "worktree": "C:\\Users\\david\\git\\ai-harness-e2e-benchmak\\targets\\.aih\\20261014T204518Z\\worktrees\\20261014T204522Z-5acf37"
+}

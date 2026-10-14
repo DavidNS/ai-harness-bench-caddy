@@ -1,0 +1,50 @@
+{
+  "criteria_notes": [
+    {
+      "criterion": "ACC12",
+      "note": "TestStreamDetachedSurvivesReload (integration): a stream echoes before and after two reloads that keep its upstream. A new stream also works."
+    },
+    {
+      "criterion": "ACC13",
+      "note": "TestStreamDetachedClosesRemovedUpstream (integration): a reload that drops upstream A closes A's stream and leaves B's open. Unit support: TestDetachedRegistryPrune and TestHandlerCleanupPrunesRemovedUpstreams."
+    },
+    {
+      "criterion": "ACC14",
+      "note": "TestStreamDefaultClosedOnReload (integration): the stream is closed on reload, and with `stream_close_delay 5s` it stays open first and is closed later. Unit support: TestHandlerCloseConnectionsMarksShutdown."
+    },
+    {
+      "criterion": "ACC15",
+      "note": "TestStreamLogsConfig covers the Caddyfile, JSON and the level default (DEBUG). TestDetachedStreamAccessLog (integration) checks that `skip_handshake` removes the handshake entry. It also checks that the close entry has logger `http.log.access.access`, appears at INFO only when configured, and carries the byte counts."
+    },
+    {
+      "criterion": "ACC16",
+      "note": "TestResponseRecorderNoWriteAfterHijack, TestResponseRecorderFailedHijack and TestResponseRecorderSwitchingProtocolsFinal cover the recorder. TestEncodeUpgradeFinal101 and TestEncodeNoWriteAfterHijack cover the encode writer."
+    },
+    {
+      "criterion": "ACC17",
+      "note": "TestUpgradeThroughEncode and TestUpgradeThroughIntercept (integration), each in default and detached mode. Raw-connection copying is covered by TestRawConn and by the detached unit test TestHandlerUpgradedStreamDetached. Caveat: these two integration tests also pass without the fix, because writes after a hijack are silently discarded. The unit tests are the ones that fail without it."
+    },
+    {
+      "criterion": "ACC18",
+      "note": "TestExtendedConnectH2 uses a frame-level HTTP/2 client doing an extended CONNECT, and it passes in default and detached mode. The stdlib HTTP/2 server only advertises extended CONNECT when the process starts with `GODEBUG=http2xconnect=1`, so the test re-executes the test binary with that variable set, on other ports (9081, 9444, admin 2998). TestDetachedHTTP11Upgrade covers HTTP/1.1 upgrades in detached mode with 256 KiB payloads on three streams."
+    },
+    {
+      "criterion": "ACC19",
+      "note": "TestStreamFinishOnce races 16 finish calls with different results. It checks that onFinish runs once, one closed count, active back to 0, one duration observation, and the byte counters. TestSwitchProtocolCopierCountsBytes, TestHandlerUpgradedStreamDetached and TestRegisterStreamMetrics cover the rest."
+    },
+    {
+      "criterion": "ACC20",
+      "note": "TestUnmarshalCaddyfileStreamDetached in the reverseproxy package, including every error path: stray arguments, a missing level, and an unknown subdirective."
+    },
+    {
+      "criterion": "ACC21",
+      "note": "Doc comments on `StreamDetached` and `StreamLogs`, and the Caddyfile syntax block, describe both options."
+    },
+    {
+      "criterion": "ACC22",
+      "note": "TestDetachedRegistryPrune and TestStreamFinishOnce."
+    }
+  ],
+  "replan_request": null,
+  "summary": "I added `stream_detached` and `stream_logs` (with `skip_handshake` and `level`, default DEBUG) to `reverse_proxy`, in both the Caddyfile and JSON. Detached streams go in a process-wide registry. When the old handler is cleaned up on reload, only the streams whose upstream the new config no longer uses are closed. Stream metrics are recorded once per stream, however many close paths race. The response recorder and the encode writer now drop writes after a hijack, and a 101 is final and never buffered. The proxy copies on the raw connection through a new `caddyhttp.RawConn`. The close log goes through a new `Server.AccessLoggers`, so it follows the `logger_name` mapping. The unit packages and the integration package (`caddytest/integration`) all pass with `aih check`. The integration run includes the existing tests in that package."
+}

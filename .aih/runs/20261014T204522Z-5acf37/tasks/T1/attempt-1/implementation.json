@@ -1,0 +1,16 @@
+{
+  "criteria_notes": [
+    {
+      "criterion": "ACC9",
+      "note": "The caddyfiletest adapts to the expected JSON; verified by the passing adapt test in ./caddytest/integration. The [setup failed] result comes from the directory having no Go package, not from the test content."
+    }
+  ],
+  "replan_request": {
+    "files": [
+      "caddytest/integration/caddyfile_adapt/reverse_proxy_stream_detached.caddyfiletest",
+      "caddytest/integration/caddyfile_adapt/doc.go"
+    ],
+    "reason": "The harness runs `go test ./caddytest/integration/caddyfile_adapt` for the .caddyfiletest file, but that directory contains only data files and no Go package, so it always reports [setup failed]. The adapt test that consumes these files runs in ./caddytest/integration and passes. Please either have the harness map .caddyfiletest files to ./caddytest/integration (the adapt test there), or allow adding a Go file under caddytest/integration/caddyfile_adapt."
+  },
+  "summary": "The only failing item is the harness mapping reverse_proxy_stream_detached.caddyfiletest to ./caddytest/integration/caddyfile_adapt, which has no Go files, so go test reports [setup failed]. Every real package passes (caddytest/integration, modules/caddyhttp, encode, reverseproxy), including the adapt test that reads the new .caddyfiletest from inside caddytest/integration. The same failure would apply to any existing .caddyfiletest file. I made no changes, since the fix is outside my file list."
+}
