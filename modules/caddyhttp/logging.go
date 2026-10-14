@@ -91,21 +91,35 @@ type ServerLogConfig struct {
 // wrapLogger wraps logger in one or more logger named
 // according to user preferences for the given host.
 func (slc ServerLogConfig) wrapLogger(logger *zap.Logger, req *http.Request) []*zap.Logger {
+	names := slc.AccessLoggerNames(req)
+
+	// make a list of named loggers, or the default logger
+	loggers := make([]*zap.Logger, 0, len(names))
+	for _, loggerName := range names {
+		// no name, use the default logger
+		if loggerName == "" {
+			loggers = append(loggers, logger)
+			continue
+		}
+		// make a logger with the given name
+		loggers = append(loggers, logger.Named(loggerName))
+	}
+	return loggers
+}
+
+// AccessLoggerNames returns the names of the loggers that the access log
+// of req is emitted to, each relative to the access logger ("http.log.access")
+// that they extend. An empty name stands for the access logger itself.
+func (slc ServerLogConfig) AccessLoggerNames(req *http.Request) []string {
 	// using the `log_name` directive or the `access_logger_names` variable,
 	// the logger names can be overridden for the current request
 	if names := GetVar(req.Context(), AccessLoggerNameVarKey); names != nil {
 		if namesSlice, ok := names.([]any); ok {
-			loggers := make([]*zap.Logger, 0, len(namesSlice))
+			loggerNames := make([]string, 0, len(namesSlice))
 			for _, loggerName := range namesSlice {
-				// no name, use the default logger
-				if loggerName == "" {
-					loggers = append(loggers, logger)
-					continue
-				}
-				// make a logger with the given name
-				loggers = append(loggers, logger.Named(loggerName.(string)))
+				loggerNames = append(loggerNames, loggerName.(string))
 			}
-			return loggers
+			return loggerNames
 		}
 	}
 
@@ -116,20 +130,7 @@ func (slc ServerLogConfig) wrapLogger(logger *zap.Logger, req *http.Request) []*
 	}
 
 	// get the logger names for this host from the config
-	hosts := slc.getLoggerHosts(host)
-
-	// make a list of named loggers, or the default logger
-	loggers := make([]*zap.Logger, 0, len(hosts))
-	for _, loggerName := range hosts {
-		// no name, use the default logger
-		if loggerName == "" {
-			loggers = append(loggers, logger)
-			continue
-		}
-		// make a logger with the given name
-		loggers = append(loggers, logger.Named(loggerName))
-	}
-	return loggers
+	return slc.getLoggerHosts(host)
 }
 
 func (slc ServerLogConfig) getLoggerHosts(host string) []string {

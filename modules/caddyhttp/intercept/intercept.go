@@ -120,6 +120,13 @@ func (ir Intercept) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddy
 	repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 	rec := interceptedResponseHandler{replacer: repl}
 	rec.ResponseRecorder = caddyhttp.NewResponseRecorder(w, buf, func(status int, header http.Header) bool {
+		// a 2xx response to CONNECT (RFC 9110 section 9.3.6), as used by
+		// HTTP/2 and HTTP/3 extended CONNECT, turns the stream into a tunnel
+		// and must reach the client right away, so it can't be intercepted
+		if r.Method == http.MethodConnect && status >= 200 && status < 300 {
+			return false
+		}
+
 		// see if any response handler is configured for this original response
 		for i, rh := range ir.HandleResponse {
 			if rh.Match != nil && !rh.Match.Match(status, header) {

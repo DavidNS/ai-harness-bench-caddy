@@ -1,0 +1,93 @@
+{
+ "schema_version": 1,
+ "run_id": "20261014T200827Z-caddy-stream-detached-baseline-1",
+ "case": "caddy-stream-detached",
+ "arm": "baseline",
+ "n": 1,
+ "intent_version": 1,
+ "input_kind": "us",
+ "model": "claude-sonnet-5-5",
+ "started_at": "20261014T200827Z",
+ "fixture_sha": "04fe16102872eba7c017b495a9006fddae4dbdc4",
+ "wall_seconds": 2162.1,
+ "files": [
+  "caddytest/integration/caddyfile_adapt/reverse_proxy_stream_options.caddyfiletest",
+  "caddytest/integration/reverseproxy_stream_test.go",
+  "modules/caddyhttp/encode/encode.go",
+  "modules/caddyhttp/encode/upgrade_test.go",
+  "modules/caddyhttp/intercept/intercept.go",
+  "modules/caddyhttp/intercept/intercept_test.go",
+  "modules/caddyhttp/logging.go",
+  "modules/caddyhttp/responsewriter.go",
+  "modules/caddyhttp/responsewriter_upgrade_test.go",
+  "modules/caddyhttp/reverseproxy/caddyfile.go",
+  "modules/caddyhttp/reverseproxy/metrics.go",
+  "modules/caddyhttp/reverseproxy/reverseproxy.go",
+  "modules/caddyhttp/reverseproxy/stream.go",
+  "modules/caddyhttp/reverseproxy/stream_test.go",
+  "modules/caddyhttp/reverseproxy/streaming.go"
+ ],
+ "shortstat": "15 files changed, 2726 insertions(+), 136 deletions(-)",
+ "diff_lines": 3199,
+ "judge": {
+  "ok": true,
+  "fail_to_pass_ok": true,
+  "pass_to_pass_ok": true,
+  "hidden_files": [
+   "tests.patch"
+  ],
+  "baseline_failures": [],
+  "new_failures": [],
+  "hidden": {
+   "target": "./caddytest/integration -run TestReverseProxyReloadStressUpgradedStreamsHeapProfiles|TestReverseProxyDetachedUpgradeWithAccessLogAndIntercept",
+   "exit_code": 0,
+   "passed": 2,
+   "failed": 0,
+   "errors": 0,
+   "skipped": 0,
+   "summary": "2 passed, 0 failed, 0 errors, 0 skipped (go exit 0)",
+   "output_tail": "\",\\\"msg\\\":\\\"server running\\\",\\\"name\\\":\\\"srv0\\\",\\\"protocols\\\":[\\\"h1\\\",\\\"h2\\\",\\\"h3\\\"]}\\n\"}\n{\"Time\":\"2026-10-14T20:44:39.826564443Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestReverseProxyReloadStressUpgradedStreamsHeapProfiles\",\"Output\":\"{\\\"level\\\":\\\"info\\\",\\\"ts\\\":1792010679.826479,\\\"logger\\\":\\\"http\\\",\\\"msg\\\":\\\"servers shutting down; grace period initiated\\\",\\\"duration\\\":0.000000001}\\n\"}\n{\"Time\":\"2026-10-14T20:44:39.826775864Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestReverseProxyReloadStressUpgradedStreamsHeapProfiles\",\"Output\":\"{\\\"level\\\":\\\"info\\\",\\\"ts\\\":1792010679.8266761,\\\"msg\\\":\\\"autosaved config (load with --resume flag)\\\",\\\"file\\\":\\\"/root/.config/caddy/autosave.json\\\"}\\n\"}\n{\"Time\":\"2026-10-14T20:44:39.826816068Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestReverseProxyReloadStressUpgradedStreamsHeapProfiles\",\"Output\":\"{\\\"level\\\":\\\"info\\\",\\\"ts\\\":1792010679.8267293,\\\"logger\\\":\\\"admin.api\\\",\\\"msg\\\":\\\"load complete\\\"}\\n\"}\n{\"Time\":\"2026-10-14T20:44:39.828216703Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestReverseProxyReloadStressUpgradedStreamsHeapProfiles\",\"Output\":\"{\\\"level\\\":\\\"info\\\",\\\"ts\\\":1792010679.8280804,\\\"logger\\\":\\\"admin\\\",\\\"msg\\\":\\\"stopped previous server\\\",\\\"address\\\":\\\"localhost:2999\\\"}\\n\"}\n{\"Time\":\"2026-10-14T20:44:39.885725277Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestReverseProxyReloadStressUpgradedStreamsHeapProfiles\",\"Output\":\"    stream_reload_stress_test.go:49: detached mode heap profile size: before=70327B mid=75316B after=76289B objects(before=22301 mid=22245 after=22245)\\n\"}\n{\"Time\":\"2026-10-14T20:44:39.885776982Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestReverseProxyReloadStressUpgradedStreamsHeapProfiles\",\"Output\":\"    stream_reload_stress_test.go:64: legacy      heap: before=6.8 MiB mid=6.4 MiB after=6.4 MiB delta(before\u2192after)=-368.0 KiB objects(before=22305 after=22161) handler_frames(before=0 after=0)\\n\"}\n{\"Time\":\"2026-10-14T20:44:39.885785383Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestReverseProxyReloadStressUpgradedStreamsHeapProfiles\",\"Output\":\"    stream_reload_stress_test.go:72: close_delay heap: before=6.5 MiB mid=6.5 MiB after=6.4 MiB delta(before\u2192after)=-152.0 KiB objects(before=22385 after=22176) handler_frames(before=0 after=0)\\n\"}\n{\"Time\":\"2026-10-14T20:44:39.885788583Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestReverseProxyReloadStressUpgradedStreamsHeapProfiles\",\"Output\":\"    stream_reload_stress_test.go:80: detached    heap: before=6.5 MiB mid=6.4 MiB after=6.4 MiB delta(before\u2192after)=-48.0 KiB objects(before=22301 after=22245) handler_frames(before=0 after=0)\\n\"}\n{\"Time\":\"2026-10-14T20:44:39.885815586Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestReverseProxyReloadStressUpgradedStreamsHeapProfiles\",\"Output\":\"--- PASS: TestReverseProxyReloadStressUpgradedStreamsHeapProfiles (0.96s)\\n\",\"OutputType\":\"frame\"}\n{\"Time\":\"2026-10-14T20:44:39.885831787Z\",\"Action\":\"pass\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestReverseProxyReloadStressUpgradedStreamsHeapProfiles\",\"Elapsed\":0.96}\n{\"Time\":\"2026-10-14T20:44:39.885837388Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Output\":\"PASS\\n\",\"OutputType\":\"frame\"}\n{\"Time\":\"2026-10-14T20:44:39.888465643Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Output\":\"ok  \\tgithub.com/caddyserver/caddy/v2/caddytest/integration\\t2.027s\\n\"}\n{\"Time\":\"2026-10-14T20:44:39.888509347Z\",\"Action\":\"pass\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Elapsed\":2.027}\n"
+  },
+  "suite": {
+   "target": "./modules/caddyhttp/... ./caddytest/...",
+   "exit_code": 1,
+   "passed": 1251,
+   "failed": 0,
+   "errors": 0,
+   "skipped": 1,
+   "summary": "1250 passed, 1 failed, 0 errors, 1 skipped (go exit 1); 1 passed on retry (flaky): github.com/caddyserver/caddy/v2/caddytest/integration::TestACMEServerWithDefaults",
+   "output_tail": " choose from all certificates\\\",\\\"identifier\\\":\\\"127.0.0.1\\\"}\\n\"}\n{\"Time\":\"2026-10-14T20:45:07.316590787Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestH2ToH1ChunkedResponse\",\"Output\":\"{\\\"level\\\":\\\"debug\\\",\\\"ts\\\":1792010707.3165226,\\\"logger\\\":\\\"tls.handshake\\\",\\\"msg\\\":\\\"choosing certificate\\\",\\\"identifier\\\":\\\"127.0.0.1\\\",\\\"num_choices\\\":1}\\n\"}\n{\"Time\":\"2026-10-14T20:45:07.316594488Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestH2ToH1ChunkedResponse\",\"Output\":\"{\\\"level\\\":\\\"debug\\\",\\\"ts\\\":1792010707.3165271,\\\"logger\\\":\\\"tls.handshake\\\",\\\"msg\\\":\\\"custom certificate selection results\\\",\\\"identifier\\\":\\\"127.0.0.1\\\",\\\"subjects\\\":[\\\"a.caddy.localhost\\\"],\\\"managed\\\":false,\\\"issuer_key\\\":\\\"\\\",\\\"hash\\\":\\\"205fb33c3301100a987798c3f0831eecbecb8143dde9796d253e7a8c23722e67\\\"}\\n\"}\n{\"Time\":\"2026-10-14T20:45:07.316598588Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestH2ToH1ChunkedResponse\",\"Output\":\"{\\\"level\\\":\\\"debug\\\",\\\"ts\\\":1792010707.316532,\\\"logger\\\":\\\"tls.handshake\\\",\\\"msg\\\":\\\"matched certificate in cache\\\",\\\"remote_ip\\\":\\\"127.0.0.1\\\",\\\"remote_port\\\":\\\"46596\\\",\\\"subjects\\\":[\\\"a.caddy.localhost\\\"],\\\"managed\\\":false,\\\"expiration\\\":1899485418,\\\"hash\\\":\\\"205fb33c3301100a987798c3f0831eecbecb8143dde9796d253e7a8c23722e67\\\"}\\n\"}\n{\"Time\":\"2026-10-14T20:45:07.317317751Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestH2ToH1ChunkedResponse\",\"Output\":\"{\\\"level\\\":\\\"info\\\",\\\"ts\\\":1792010707.317247,\\\"logger\\\":\\\"admin\\\",\\\"msg\\\":\\\"stopped previous server\\\",\\\"address\\\":\\\"localhost:2999\\\"}\\n\"}\n{\"Time\":\"2026-10-14T20:45:07.318319138Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestH2ToH1ChunkedResponse\",\"Output\":\"{\\\"level\\\":\\\"debug\\\",\\\"ts\\\":1792010707.3182602,\\\"logger\\\":\\\"http.handlers.reverse_proxy\\\",\\\"msg\\\":\\\"selected upstream\\\",\\\"dial\\\":\\\"localhost:54321\\\",\\\"total_upstreams\\\":1}\\n\"}\n{\"Time\":\"2026-10-14T20:45:07.320108094Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestH2ToH1ChunkedResponse\",\"Output\":\"{\\\"level\\\":\\\"debug\\\",\\\"ts\\\":1792010707.320016,\\\"logger\\\":\\\"http.handlers.reverse_proxy\\\",\\\"msg\\\":\\\"upstream roundtrip\\\",\\\"upstream\\\":\\\"localhost:54321\\\",\\\"duration\\\":0.001620741,\\\"request\\\":{\\\"remote_ip\\\":\\\"127.0.0.1\\\",\\\"remote_port\\\":\\\"46596\\\",\\\"client_ip\\\":\\\"127.0.0.1\\\",\\\"proto\\\":\\\"HTTP/2.0\\\",\\\"method\\\":\\\"PUT\\\",\\\"host\\\":\\\"127.0.0.1:9443\\\",\\\"uri\\\":\\\"/tov2ray\\\",\\\"headers\\\":{\\\"Accept-Encoding\\\":[\\\"gzip\\\"],\\\"User-Agent\\\":[\\\"Go-http-client/2.0\\\"],\\\"X-Forwarded-For\\\":[\\\"127.0.0.1\\\"],\\\"X-Forwarded-Proto\\\":[\\\"https\\\"],\\\"X-Forwarded-Host\\\":[\\\"127.0.0.1:9443\\\"],\\\"Via\\\":[\\\"2.0 Caddy\\\"]},\\\"tls\\\":{\\\"resumed\\\":false,\\\"version\\\":772,\\\"cipher_suite\\\":4865,\\\"proto\\\":\\\"h2\\\",\\\"server_name\\\":\\\"\\\",\\\"ech\\\":false}},\\\"headers\\\":{\\\"Content-Encoding\\\":[\\\"gzip\\\"],\\\"Date\\\":[\\\"Wed, 14 Oct 2026 20:45:07 GMT\\\"],\\\"Content-Length\\\":[\\\"1049\\\"]},\\\"status\\\":200}\\n\"}\n{\"Time\":\"2026-10-14T20:45:07.320762051Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestH2ToH1ChunkedResponse\",\"Output\":\"--- PASS: TestH2ToH1ChunkedResponse (0.02s)\\n\",\"OutputType\":\"frame\"}\n{\"Time\":\"2026-10-14T20:45:07.320805955Z\",\"Action\":\"pass\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Test\":\"TestH2ToH1ChunkedResponse\",\"Elapsed\":0.02}\n{\"Time\":\"2026-10-14T20:45:07.320822456Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Output\":\"FAIL\\n\",\"OutputType\":\"frame\"}\n{\"Time\":\"2026-10-14T20:45:07.324316461Z\",\"Action\":\"output\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Output\":\"FAIL\\tgithub.com/caddyserver/caddy/v2/caddytest/integration\\t18.381s\\n\",\"OutputType\":\"frame\"}\n{\"Time\":\"2026-10-14T20:45:07.324379766Z\",\"Action\":\"fail\",\"Package\":\"github.com/caddyserver/caddy/v2/caddytest/integration\",\"Elapsed\":18.381}\n"
+  }
+ },
+ "arm_report": {
+  "exit": 0,
+  "usage": {
+   "cost_usd": 5.8344112,
+   "num_turns": 214,
+   "duration_ms": 2159005,
+   "duration_api_ms": 1216800,
+   "input_tokens": 266,
+   "output_tokens": 157767,
+   "cache_read_input_tokens": 29838172,
+   "cache_creation_input_tokens": 318098,
+   "wall_ms": 2162077
+  },
+  "sessions": 1,
+  "permission_denials": 24,
+  "transcript": "transcript.jsonl",
+  "result": "`stream_detached` and `stream_logs` are implemented, and `go test -short ./...` and the full integration suite pass. I couldn't run `-race` (cgo isn't enabled here) or `golangci-lint` (not installed), so race detection and lint are unchecked.\n\nOne run of `TestACMEServerWithDefaults` failed. It passed on its own and in two later full-suite runs, one on a stash of my changes, so I treated it as a flake.\n\n**What was built**\n- **Detached streams:** with `stream_detached`, an HTTP/1.1 upgrade stays open across reloads and is no longer tied to the handler or its config. When a reload removes an upstream from the config, that upstream's detached streams are closed. `stream_close_delay` applies to that close, and the close is cancelled if the upstream comes back before the delay ends. The default is unchanged: streams close on reload, honouring the close delay.\n- **`stream_logs`:** it takes `skip_handshake`, `level` (default debug) and `logger_name`. `logger_name access` sends the stream-close log to the same logger as that request's access log. `skip_handshake` suppresses the access-log entry for the upgrade request, in both modes.\n- **Metrics:** `caddy_reverse_proxy_streams_active`, `streams_closed_total` (by result), `stream_duration_seconds` and `stream_bytes_total` (by direction). Each stream is counted once, and the counters carry across reloads.\n- **Config surface:** both options are in JSON and the Caddyfile, documented in the Go doc comments and the Caddyfile syntax comment.",
+  "stderr": ""
+ },
+ "usage": {
+  "cost_usd": 5.8344112,
+  "num_turns": 214,
+  "duration_ms": 2159005,
+  "duration_api_ms": 1216800,
+  "input_tokens": 266,
+  "output_tokens": 157767,
+  "cache_read_input_tokens": 29838172,
+  "cache_creation_input_tokens": 318098,
+  "wall_ms": 2162077
+ },
+ "sessions": 1
+}

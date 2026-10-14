@@ -1,0 +1,65 @@
+example.com {
+	reverse_proxy localhost:8080 {
+		stream_timeout 1h
+		stream_close_delay 5s
+		stream_detached
+		stream_logs {
+			skip_handshake
+			level info
+			logger_name access
+		}
+	}
+}
+----------
+{
+	"apps": {
+		"http": {
+			"servers": {
+				"srv0": {
+					"listen": [
+						":443"
+					],
+					"routes": [
+						{
+							"match": [
+								{
+									"host": [
+										"example.com"
+									]
+								}
+							],
+							"handle": [
+								{
+									"handler": "subroute",
+									"routes": [
+										{
+											"handle": [
+												{
+													"handler": "reverse_proxy",
+													"stream_close_delay": 5000000000,
+													"stream_detached": true,
+													"stream_logs": {
+														"level": "info",
+														"logger_name": "access",
+														"skip_handshake": true
+													},
+													"stream_timeout": 3600000000000,
+													"upstreams": [
+														{
+															"dial": "localhost:8080"
+														}
+													]
+												}
+											]
+										}
+									]
+								}
+							],
+							"terminal": true
+						}
+					]
+				}
+			}
+		}
+	}
+}
