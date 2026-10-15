@@ -1,0 +1,274 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261015T203723Z/worktrees/20261015T203734Z-b8ae6d golang:1.27-bookworm go test -count=1 -timeout 30m -run=TestInterceptUpgrade ./caddytest/integration
+{"level":"info","ts":1792097671.3754172,"msg":"maxprocs: Leaving GOMAXPROCS=12: CPU quota undefined"}
+{"level":"info","ts":1792097671.3754554,"msg":"GOMEMLIMIT is updated","GOMEMLIMIT":15062490316,"previous":9223372036854775807}
+{"level":"info","ts":1792097671.3754609,"msg":"using config from file","file":"/tmp/2191576875"}
+{"level":"info","ts":1792097671.375463,"msg":"adapted config to JSON","adapter":"caddyfile"}
+{"level":"info","ts":1792097671.3757954,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//localhost:2999","//[::1]:2999","//127.0.0.1:2999"]}
+{"level":"info","ts":1792097671.3762467,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792097671.376271,"msg":"serving initial configuration"}
+{"level":"info","ts":1792097672.3761282,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"55782","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"]}}
+{"level":"info","ts":1792097672.3765364,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"55782","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"]}}
+{"level":"info","ts":1792097672.376878,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"55782","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"],"Content-Length":["380"],"Content-Type":["text/caddyfile"]}}
+{"level":"info","ts":1792097672.3799565,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//[::1]:2999","//127.0.0.1:2999","//localhost:2999"]}
+{"level":"warn","ts":1792097672.3801095,"logger":"http.auto_https","msg":"server is listening only on the HTTP port, so no automatic HTTPS will be applied to this server","server_name":"srv0","http_port":9080}
+{"level":"info","ts":1792097672.3802855,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0xbb8a2ca2900"}
+{"level":"info","ts":1792097672.3803093,"logger":"pki.ca.local","msg":"root certificate trust store installation disabled; unconfigured clients may show warnings","path":"storage:pki/authorities/local/root.crt"}
+{"level":"warn","ts":1792097672.3804383,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792097672.3804684,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792097672.3804772,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1792097672.3806777,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792097672.380708,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792097672.3809683,"msg":"caddytest: config load time took 4.239791ms"}
+{"level":"info","ts":1792097672.3817334,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792097672.3824306,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"55792","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"]}}
+{"level":"info","ts":1792097672.382777,"msg":"caddytest: redirecting the dialer from localhost:9080 to 127.0.0.1:9080"}
+{"level":"error","ts":1792097672.3835099,"logger":"http.log.error.log0","msg":"http: wrote more than the declared Content-Length","request":{"remote_ip":"127.0.0.1","remote_port":"54828","client_ip":"127.0.0.1","proto":"HTTP/1.1","method":"GET","host":"localhost:9080","uri":"/plain","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}},"duration":0.00044862,"error":"http: wrote more than the declared Content-Length"}
+{"level":"info","ts":1792097672.3838525,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"55792","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792097672.3872137,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"55792","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792097672.3875232,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"55792","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"]}}
+{"level":"info","ts":1792097672.3878365,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"55792","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"],"Content-Length":["396"],"Content-Type":["text/caddyfile"]}}
+{"level":"info","ts":1792097672.3892157,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//localhost:2999","//[::1]:2999","//127.0.0.1:2999"]}
+{"level":"warn","ts":1792097672.3893025,"logger":"http.auto_https","msg":"server is listening only on the HTTP port, so no automatic HTTPS will be applied to this server","server_name":"srv0","http_port":9080}
+{"level":"info","ts":1792097672.389432,"logger":"pki.ca.local","msg":"root certificate trust store installation disabled; unconfigured clients may show warnings","path":"storage:pki/authorities/local/root.crt"}
+{"level":"warn","ts":1792097672.389508,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792097672.3895142,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792097672.3895166,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1792097672.389531,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"info","ts":1792097672.389717,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792097672.389745,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792097672.38985,"msg":"caddytest: config load time took 2.121896ms"}
+{"level":"info","ts":1792097672.390596,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792097672.3910725,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"55804","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792097672.39138,"msg":"caddytest: redirecting the dialer from localhost:9080 to 127.0.0.1:9080"}
+{"level":"error","ts":1792097672.3920577,"logger":"http.log.error.log0","msg":"http: wrote more than the declared Content-Length","request":{"remote_ip":"127.0.0.1","remote_port":"54832","client_ip":"127.0.0.1","proto":"HTTP/1.1","method":"GET","host":"localhost:9080","uri":"/plain","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}},"duration":0.000426819,"error":"http: wrote more than the declared Content-Length"}
+{"level":"info","ts":1792097672.3924327,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"55804","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+--- FAIL: TestInterceptUpgrade (1.02s)
+    --- FAIL: TestInterceptUpgrade/default (1.02s)
+        intercept_test.go:72: unable to read the response body unexpected EOF
+        caddytest.go:155: ----------- failed with config -----------
+            {
+              "admin": {
+                "listen": "localhost:2999"
+              },
+              "apps": {
+                "http": {
+                  "grace_period": 1,
+                  "http_port": 9080,
+                  "https_port": 9443,
+                  "servers": {
+                    "srv0": {
+                      "listen": [
+                        ":9080"
+                      ],
+                      "logs": {
+                        "logger_names": {
+                          "localhost": [
+                            "log0"
+                          ]
+                        }
+                      },
+                      "routes": [
+                        {
+                          "handle": [
+                            {
+                              "handler": "subroute",
+                              "routes": [
+                                {
+                                  "handle": [
+                                    {
+                                      "handler": "subroute",
+                                      "routes": [
+                                        {
+                                          "handle": [
+                                            {
+                                              "handle_response": [
+                                                {
+                                                  "routes": [
+                                                    {
+                                                      "handle": [
+                                                        {
+                                                          "body": "intercepted",
+                                                          "handler": "static_response",
+                                                          "status_code": 203
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ],
+                                              "handler": "intercept"
+                                            },
+                                            {
+                                              "handler": "reverse_proxy",
+                                              "upstreams": [
+                                                {
+                                                  "dial": "127.0.0.1:9081"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ],
+                          "match": [
+                            {
+                              "host": [
+                                "localhost"
+                              ]
+                            }
+                          ],
+                          "terminal": true
+                        }
+                      ]
+                    }
+                  }
+                },
+                "pki": {
+                  "certificate_authorities": {
+                    "local": {
+                      "install_trust": false
+                    }
+                  }
+                }
+              },
+              "logging": {
+                "logs": {
+                  "default": {
+                    "exclude": [
+                      "http.log.access.log0"
+                    ]
+                  },
+                  "log0": {
+                    "include": [
+                      "http.log.access.log0"
+                    ],
+                    "writer": {
+                      "filename": "/tmp/TestInterceptUpgradedefault3656206861/001/access.log",
+                      "output": "file"
+                    }
+                  }
+                }
+              }
+            }
+    --- FAIL: TestInterceptUpgrade/detached (0.01s)
+        intercept_test.go:72: unable to read the response body unexpected EOF
+        caddytest.go:155: ----------- failed with config -----------
+            {
+              "admin": {
+                "listen": "localhost:2999"
+              },
+              "apps": {
+                "http": {
+                  "grace_period": 1,
+                  "http_port": 9080,
+                  "https_port": 9443,
+                  "servers": {
+                    "srv0": {
+                      "listen": [
+                        ":9080"
+                      ],
+                      "logs": {
+                        "logger_names": {
+                          "localhost": [
+                            "log0"
+                          ]
+                        }
+                      },
+                      "routes": [
+                        {
+                          "handle": [
+                            {
+                              "handler": "subroute",
+                              "routes": [
+                                {
+                                  "handle": [
+                                    {
+                                      "handler": "subroute",
+                                      "routes": [
+                                        {
+                                          "handle": [
+                                            {
+                                              "handle_response": [
+                                                {
+                                                  "routes": [
+                                                    {
+                                                      "handle": [
+                                                        {
+                                                          "body": "intercepted",
+                                                          "handler": "static_response",
+                                                          "status_code": 203
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ],
+                                              "handler": "intercept"
+                                            },
+                                            {
+                                              "handler": "reverse_proxy",
+                                              "stream_detached": true,
+                                              "upstreams": [
+                                                {
+                                                  "dial": "127.0.0.1:9081"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ],
+                          "match": [
+                            {
+                              "host": [
+                                "localhost"
+                              ]
+                            }
+                          ],
+                          "terminal": true
+                        }
+                      ]
+                    }
+                  }
+                },
+                "pki": {
+                  "certificate_authorities": {
+                    "local": {
+                      "install_trust": false
+                    }
+                  }
+                }
+              },
+              "logging": {
+                "logs": {
+                  "default": {
+                    "exclude": [
+                      "http.log.access.log0"
+                    ]
+                  },
+                  "log0": {
+                    "include": [
+                      "http.log.access.log0"
+                    ],
+                    "writer": {
+                      "filename": "/tmp/TestInterceptUpgradedetached1414618308/001/access.log",
+                      "output": "file"
+                    }
+                  }
+                }
+              }
+            }
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/caddytest/integration	1.063s
+FAIL
+

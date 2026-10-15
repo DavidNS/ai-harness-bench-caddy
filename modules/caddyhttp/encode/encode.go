@@ -261,6 +261,16 @@ type responseWriter struct {
 // to actually write the header.
 func (rw *responseWriter) WriteHeader(status int) {
 	rw.statusCode = status
+
+	// 101 Switching Protocols is the final response of an upgrade; the
+	// connection is handed over right after it, so nothing may be
+	// written (or encoded) once it has been sent
+	if status == http.StatusSwitchingProtocols {
+		rw.ResponseWriter.WriteHeader(status)
+		rw.wroteHeader = true
+		return
+	}
+
 	if status == http.StatusPartialContent {
 		rw.disabled = true // partial representations must not be dynamically re-encoded
 	}

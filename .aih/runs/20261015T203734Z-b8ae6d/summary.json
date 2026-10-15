@@ -1,0 +1,189 @@
+{
+  "attempts_total": 1,
+  "base_sha": "04fe16102872eba7c017b495a9006fddae4dbdc4",
+  "delivery": null,
+  "gate_failures": [],
+  "head": "4277379953e687bb18b7b2f978810c5667fe7a86",
+  "human_decisions": [
+    {
+      "actor": "policy",
+      "decision": "approve",
+      "gate": "human.plan_approved"
+    }
+  ],
+  "models": [
+    "claude-sonnet-5-5"
+  ],
+  "plan_tasks": [
+    {
+      "files": [
+        "modules/caddyhttp/reverseproxy/reverseproxy.go",
+        "modules/caddyhttp/reverseproxy/streaming.go",
+        "modules/caddyhttp/reverseproxy/caddyfile.go",
+        "modules/caddyhttp/reverseproxy/metrics.go",
+        "modules/caddyhttp/responsewriter.go",
+        "modules/caddyhttp/server.go",
+        "modules/caddyhttp/encode/encode.go",
+        "modules/caddyhttp/intercept/intercept.go",
+        "modules/caddyhttp/logging.go",
+        "modules/caddyhttp/reverseproxy/streaming_test.go",
+        "modules/caddyhttp/reverseproxy/stream_detached_test.go",
+        "modules/caddyhttp/responsewriter_test.go",
+        "caddytest/integration/stream_test.go",
+        "caddytest/integration/stream_detached_test.go",
+        "caddytest/integration/intercept_test.go"
+      ],
+      "id": "T1",
+      "key": "T1",
+      "tests": [
+        "modules/caddyhttp/reverseproxy/streaming_test.go",
+        "modules/caddyhttp/reverseproxy/stream_detached_test.go",
+        "modules/caddyhttp/responsewriter_test.go",
+        "caddytest/integration/stream_test.go",
+        "caddytest/integration/stream_detached_test.go",
+        "caddytest/integration/intercept_test.go"
+      ]
+    }
+  ],
+  "plan_version": 1,
+  "run_dir": "C:\\Users\\david\\git\\ai-harness-e2e-benchmak\\targets\\.aih\\20261015T203723Z\\runs\\20261015T203734Z-b8ae6d",
+  "run_id": "20261015T203734Z-b8ae6d",
+  "schema_version": 1,
+  "sessions": 4,
+  "status": "implemented",
+  "tasks": [
+    {
+      "advisories": [
+        {
+          "file": "caddytest/integration/stream_detached_test.go",
+          "line": 0,
+          "pass": 2,
+          "severity": "advisory",
+          "text": "No integration test covers an h2 extended CONNECT stream with stream_detached across a reload, or detached streams with stream_close_delay set. The doc comment says the delay does not apply and that h2 streams keep the request."
+        },
+        {
+          "file": "modules/caddyhttp/reverseproxy/streaming.go",
+          "line": 520,
+          "pass": 2,
+          "severity": "advisory",
+          "text": "A stream whose upgrade finishes after the old handler's Cleanup has run is registered too late and is never closed on removal of its upstream. No test covers this reload race."
+        },
+        {
+          "file": "modules/caddyhttp/reverseproxy/stream_detached_test.go",
+          "line": 0,
+          "pass": 2,
+          "severity": "advisory",
+          "text": "No end-to-end test for stream_timeout expiring on a detached stream, or for stream_logs with JSON config. Both are covered only at unit level."
+        },
+        {
+          "file": "modules/caddyhttp/reverseproxy/streaming.go",
+          "line": 538,
+          "pass": 4,
+          "severity": "advisory",
+          "text": "streamRegistry.count is used only by tests."
+        },
+        {
+          "file": "modules/caddyhttp/intercept/intercept.go",
+          "line": 0,
+          "pass": 4,
+          "severity": "advisory",
+          "text": "intercept.go is declared for the task but unchanged. The intercept 101 handling relies entirely on the responseRecorder change, so the declaration is unused."
+        }
+      ],
+      "attempts": 1,
+      "commit": "4277379953e687bb18b7b2f978810c5667fe7a86",
+      "coverage": [
+        {
+          "criterion": "ACC1",
+          "line": 0,
+          "note": "Echo works after reload in Caddyfile mode; the JSON variant is TestStreamDetachedSurvivesReloadJSON.",
+          "status": "covered",
+          "test": "caddytest/integration/stream_detached_test.go::TestStreamDetachedSurvivesReload"
+        },
+        {
+          "criterion": "ACC2",
+          "line": 0,
+          "note": "The stream to the removed upstream is closed and the stream to the retained upstream still echoes.",
+          "status": "covered",
+          "test": "caddytest/integration/stream_detached_test.go::TestStreamDetachedClosesRemovedUpstream"
+        },
+        {
+          "criterion": "ACC3",
+          "line": 0,
+          "note": "TestStreamNotDetachedClosedOnReload covers the close on reload; this test covers the stream staying open until the delay elapses.",
+          "status": "covered",
+          "test": "caddytest/integration/stream_detached_test.go::TestStreamCloseDelayOnReload"
+        },
+        {
+          "criterion": "ACC4",
+          "line": 0,
+          "note": "The skip_handshake case asserts no 'handled request' entry for /ws; the default cases assert one with status 101. Caddyfile parsing is covered by TestStreamOptionsCaddyfile.",
+          "status": "covered",
+          "test": "caddytest/integration/stream_detached_test.go::TestStreamDetachedAccessLogs"
+        },
+        {
+          "criterion": "ACC5",
+          "line": 0,
+          "note": "Asserts a 'stream closed' entry in the access log at debug by default and at info when configured. It is absent without logger_name access.",
+          "status": "covered",
+          "test": "caddytest/integration/stream_detached_test.go::TestStreamDetachedAccessLogs"
+        },
+        {
+          "criterion": "ACC6",
+          "line": 0,
+          "note": "After hijack, Write, ReadFrom and Flush return ErrHijacked, and WriteHeader is a no-op. Nothing reaches the writer. TestHijackedConnRawConn and TestResponseRecorderSwitchingProtocolsIsFinal cover the raw conn and 101 being final.",
+          "status": "covered",
+          "test": "modules/caddyhttp/responsewriter_test.go::TestResponseRecorderAfterHijack"
+        },
+        {
+          "criterion": "ACC7",
+          "line": 0,
+          "note": "A WebSocket echoes through intercept with handle_response and is access logged with status 101. The encode path is covered by TestStreamThroughEncodeWithAccessLog.",
+          "status": "covered",
+          "test": "caddytest/integration/intercept_test.go::TestInterceptUpgrade"
+        },
+        {
+          "criterion": "ACC8",
+          "line": 0,
+          "note": "A raw h2 extended CONNECT stream echoes data in default and detached modes. HTTP/1.1 detached upgrades are covered by the reload tests.",
+          "status": "covered",
+          "test": "caddytest/integration/stream_detached_test.go::TestStreamExtendedConnectH2"
+        },
+        {
+          "criterion": "ACC9",
+          "line": 0,
+          "note": "A repeated finish() does not double-count. The stream harness's assertAccounted checks single accounting per result: closed, timeout, error and reload.",
+          "status": "covered",
+          "test": "modules/caddyhttp/reverseproxy/stream_detached_test.go::TestStreamAccountExactlyOnce"
+        },
+        {
+          "criterion": "ACC11",
+          "line": 0,
+          "note": "The integration tests cover reload in both modes, h2 extended CONNECT, encode and intercept upgrades, and detached streams with access logging.",
+          "status": "covered",
+          "test": "caddytest/integration/stream_detached_test.go::TestStreamDetachedSurvivesReload"
+        },
+        {
+          "criterion": "ACC12",
+          "line": 0,
+          "note": "Unit tests cover the registry, Caddyfile and JSON options, metrics accounting, and post-hijack writer behaviour.",
+          "status": "covered",
+          "test": "modules/caddyhttp/reverseproxy/stream_detached_test.go::TestStreamRegistry"
+        }
+      ],
+      "id": "T1",
+      "session_id": "bb783c3b-7070-44c1-a42c-aad2d8e6ac3d",
+      "status": "committed"
+    }
+  ],
+  "usage": {
+    "cache_creation_input_tokens": 395708,
+    "cache_read_input_tokens": 12438008,
+    "cost_usd": 4.363675,
+    "duration_ms": 1337491,
+    "input_tokens": 166,
+    "num_turns": 165,
+    "output_tokens": 153671
+  },
+  "worktree": "C:\\Users\\david\\git\\ai-harness-e2e-benchmak\\targets\\.aih\\20261015T203723Z\\worktrees\\20261015T203734Z-b8ae6d"
+}

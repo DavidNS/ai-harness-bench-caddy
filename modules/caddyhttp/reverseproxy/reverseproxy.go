@@ -199,6 +199,22 @@ type Handler struct {
 	// by the previous config closing. Default: no delay.
 	StreamCloseDelay caddy.Duration `json:"stream_close_delay,omitempty"`
 
+	// If true, upgraded streams (WebSockets and other Upgrade tunnels)
+	// are detached from the config lifecycle: they are not closed when
+	// the proxy config is unloaded (and stream_close_delay does not
+	// apply to them), and they do not keep the handler alive. When a
+	// config reload removes an upstream, only the streams to that
+	// upstream are closed. Streams to dynamic upstreams, which are not
+	// part of any config, are never closed by a reload. HTTP/2 extended
+	// CONNECT streams share the same lifecycle but still occupy their
+	// request. Default: false, i.e. streams are closed on reload.
+	StreamDetached bool `json:"stream_detached,omitempty"`
+
+	// Configures the logs of upgraded streams. By default, the upgrade
+	// handshake is access logged like any other request and the close of
+	// a stream is logged at DEBUG level by the proxy's own logger.
+	StreamLogs *StreamLogs `json:"stream_logs,omitempty"`
+
 	// If configured, rewrites the copy of the upstream request.
 	// Allows changing the request method and URI (path and query).
 	// Since the rewrite is applied to the copy, it does not persist
@@ -263,7 +279,10 @@ type Handler struct {
 	connectionsCloseTimer *time.Timer
 	connectionsMu         *sync.Mutex
 
-	ctx    caddy.Context
+	streamLogLevel zapcore.Level
+	streamMetrics  *streamMetrics
+
+	ctx   caddy.Context
 	logger *zap.Logger
 	events *caddyevents.App
 }
@@ -287,6 +306,13 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	h.logger = ctx.Logger()
 	h.connections = make(map[io.ReadWriteCloser]openConnection)
 	h.connectionsMu = new(sync.Mutex)
+
+	h.streamLogLevel = zapcore.DebugLevel
+	if h.StreamLogs != nil {
+		if err := h.StreamLogs.validate(&h.streamLogLevel); err != nil {
+			return fmt.Errorf("stream_logs: %v", err)
+		}
+	}
 
 	// warn about unsafe buffering config
 	if h.RequestBuffers == -1 || h.ResponseBuffers == -1 {
@@ -452,6 +478,7 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 
 	upstreamHealthyUpdater := newMetricsUpstreamsHealthyUpdater(h, ctx)
 	upstreamHealthyUpdater.init()
+	h.streamMetrics = reverseProxyMetrics.streams
 
 	return nil
 }
@@ -462,7 +489,13 @@ func (h *Handler) Cleanup() error {
 
 	// remove hosts from our config from the pool
 	for _, upstream := range h.Upstreams {
-		_, _ = hosts.Delete(upstream.String())
+		removed, _ := hosts.Delete(upstream.String())
+		if removed {
+			// no config uses the upstream anymore (the new config is provisioned
+			// before the old one is cleaned up), so streams detached from their
+			// config must not outlive it
+			detachedStreams.closeUpstream(upstream.String())
+		}
 	}
 
 	return err
@@ -1283,9 +1316,7 @@ func (h *Handler) finalizeResponse(
 
 	// deal with 101 Switching Protocols responses: (WebSocket, h2c, etc)
 	if res.StatusCode == http.StatusSwitchingProtocols {
-		var wg sync.WaitGroup
-		h.handleUpgradeResponse(logger, &wg, rw, req, res)
-		wg.Wait()
+		h.handleUpgradeResponse(logger, rw, req, res)
 		return nil
 	}
 

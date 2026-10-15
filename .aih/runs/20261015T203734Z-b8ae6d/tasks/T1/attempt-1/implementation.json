@@ -1,0 +1,54 @@
+{
+  "criteria_notes": [
+    {
+      "criterion": "ACC1",
+      "note": "TestStreamDetachedSurvivesReload (Caddyfile) and TestStreamDetachedSurvivesReloadJSON (JSON) in caddytest/integration/stream_detached_test.go keep a stream passing data across a real reload. Unit: TestHandlerDetachedStream."
+    },
+    {
+      "criterion": "ACC2",
+      "note": "TestStreamDetachedClosesRemovedUpstream: after a reload that drops the second upstream, its stream is closed and the retained one keeps echoing. Unit: TestStreamRegistry."
+    },
+    {
+      "criterion": "ACC3",
+      "note": "TestStreamNotDetachedClosedOnReload (closed on reload) and TestStreamCloseDelayOnReload (still open after the reload, closed no earlier than the 2s delay). Unit: TestHandlerNotDetachedStreamClosedOnCleanup."
+    },
+    {
+      "criterion": "ACC4",
+      "note": "TestStreamDetachedAccessLogs checks the handshake is logged with status 101 by default and absent with skip_handshake. TestStreamOptionsCaddyfile and TestStreamOptionsJSON check parsing, including every error branch."
+    },
+    {
+      "criterion": "ACC5",
+      "note": "TestStreamDetachedAccessLogs: with `logger_name access` the stream-closed entry is in the access log, at debug by default and at info with `level info`. It is absent without `logger_name`. TestAccessLoggers (caddyhttp) covers the lookup, and TestStreamLogsValidate plus TestStreamLogsInvalidConfig cover the level and name checks."
+    },
+    {
+      "criterion": "ACC6",
+      "note": "responsewriter_test.go: TestResponseRecorderSwitchingProtocolsIsFinal, TestResponseRecorderAfterHijack, TestResponseRecorderFailedHijack and TestHijackedConnRawConn. TestHandlerNotDetachedStreamClosedOnCleanup shows 64 KiB per direction does not go through the recorder wrapper."
+    },
+    {
+      "criterion": "ACC7",
+      "note": "TestStreamThroughEncodeWithAccessLog and TestStreamDetachedThroughEncodeWithAccessLog (encode plus access log), and TestInterceptUpgrade in intercept_test.go (a catch-all handle_response leaves the 101 alone and still intercepts plain responses), each in default and detached mode."
+    },
+    {
+      "criterion": "ACC8",
+      "note": "TestStreamExtendedConnectH2 does a real RFC 8441 extended CONNECT echo over h2 through encode, in default and detached mode. HTTP/1.1 upgrades in detached mode are covered by the detached tests above."
+    },
+    {
+      "criterion": "ACC9",
+      "note": "TestStreamAccountExactlyOnce, TestStreamAccountWithoutMetrics and TestStreamMetricsRegister cover the accounting and registration. TestUpgradedStreamRun{Closed,Timeout,Reload,CopyError,RequestDone,FlushError,BufferedData*} each assert exactly one result, active back to 0, byte counters and one close log. TestSwitchProtocolCopierCountsBytes covers byte counting."
+    },
+    {
+      "criterion": "ACC10",
+      "note": "`StreamDetached` and `StreamLogs` are JSON fields with doc comments in reverseproxy.go and streaming.go. The Caddyfile syntax is documented in the caddyfile.go doc comment and parsed in `UnmarshalCaddyfile` and `StreamLogs.UnmarshalCaddyfile`."
+    },
+    {
+      "criterion": "ACC11",
+      "note": "The reload tests cover both modes, TestStreamExtendedConnectH2 covers h2, the encode and intercept tests cover upgrades through those handlers, and TestStreamDetachedAccessLogs covers detached streams with access logging."
+    },
+    {
+      "criterion": "ACC12",
+      "note": "Detached registry: TestStreamRegistry and TestStreamCloseErrors. Caddyfile parsing: TestStreamOptionsCaddyfile and TestStreamOptionsJSON. Metrics: the TestStreamAccount* tests. Post-hijack writer: the TestResponseRecorder* tests in responsewriter_test.go."
+    }
+  ],
+  "replan_request": null,
+  "summary": "Implemented opt-in detached upgraded streams in reverse_proxy (`stream_detached`, `stream_logs`), hijack-safety fixes in the response-writer chain, stream metrics, docs and tests. All six listed test files pass. The full integration package, `modules/caddyhttp`, `reverseproxy`, `encode` and `caddyauth` pass under `-race`. I did not check that the new tests fail on the base commit; the harness does that.\n\nHow it works:\n- **Detached streams:** the HTTP/1.1 handler returns right after the hijack, and the stream goroutine holds neither the handler nor the request.\n- **Reload:** a global registry keyed by upstream is used on reload. `Handler.Cleanup` closes the detached streams of any upstream whose pool refcount drops to zero.\n- **Without `stream_detached`:** the old path is unchanged, so streams close on reload and honour `stream_close_delay`.\n- **Accounting:** each stream is accounted exactly once, with result closed, timeout, error or reload.\n- **Metrics:** active gauge, closed counter by result, duration histogram, and bytes to and from the backend.\n- **`stream_logs`:** `skip_handshake`, `logger_name access` and `level` (default DEBUG). `caddyhttp.AccessLoggers(r)` gives the proxy the request's access loggers.\n- **Hijack safety:** after a hijack the recorder's `WriteHeader`, `Write`, `ReadFrom` and `FlushError` do nothing or return `ErrHijacked`. A 101 is never buffered and is final. `encode` treats 101 as final too. The proxy copies on the raw conn through a new `RawConn()` method on `hijackedConn`.\n\nThings to know:\n- **Process re-exec:** the h2 server only advertises extended CONNECT when `GODEBUG=http2xconnect=1` is set at process start. I added a `TestMain` in `caddytest/integration/stream_detached_test.go` that re-runs the whole integration package in a child process with that variable set.\n- **Hand-rolled h2 client:** the Go clients reject the `:protocol` header, so the h2 test speaks raw HTTP/2 frames with the `http2` Framer and `hpack`.\n- **Dynamic upstreams:** detached streams to dynamic upstreams are never closed by a reload, because they are not part of any config. This is documented in the field comment.\n- **h2 extended CONNECT:** it shares the detached lifecycle (registry, survives `Cleanup`) but still blocks its request handler.\n- **`intercept.go`:** I did not need to edit it. The recorder fix covers it."
+}

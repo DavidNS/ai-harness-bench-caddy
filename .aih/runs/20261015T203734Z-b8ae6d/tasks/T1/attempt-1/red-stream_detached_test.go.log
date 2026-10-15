@@ -1,0 +1,16 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261015T203723Z/worktrees/20261015T203734Z-b8ae6d-red golang:1.27-bookworm go test -count=1 -timeout 30m ./modules/caddyhttp/reverseproxy
+FAIL	github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy [build failed]
+FAIL
+# github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy [github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy.test]
+modules/caddyhttp/reverseproxy/stream_detached_test.go:40:45: h.StreamDetached undefined (type *Handler has no field or method StreamDetached)
+modules/caddyhttp/reverseproxy/stream_detached_test.go:40:65: h.StreamLogs undefined (type *Handler has no field or method StreamLogs)
+modules/caddyhttp/reverseproxy/stream_detached_test.go:46:44: h.StreamDetached undefined (type *Handler has no field or method StreamDetached)
+modules/caddyhttp/reverseproxy/stream_detached_test.go:46:64: h.StreamLogs undefined (type *Handler has no field or method StreamLogs)
+modules/caddyhttp/reverseproxy/stream_detached_test.go:53:44: h.StreamLogs undefined (type *Handler has no field or method StreamLogs)
+modules/caddyhttp/reverseproxy/stream_detached_test.go:53:82: undefined: StreamLogs
+modules/caddyhttp/reverseproxy/stream_detached_test.go:90:70: h.StreamDetached undefined (type *Handler has no field or method StreamDetached)
+modules/caddyhttp/reverseproxy/stream_detached_test.go:90:88: h.StreamLogs undefined (type *Handler has no field or method StreamLogs)
+modules/caddyhttp/reverseproxy/stream_detached_test.go:389:15: undefined: upgradedStream
+modules/caddyhttp/reverseproxy/stream_detached_test.go:392:15: undefined: streamMetrics
+modules/caddyhttp/reverseproxy/stream_detached_test.go:53:82: too many errors
+

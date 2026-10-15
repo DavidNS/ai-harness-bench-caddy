@@ -1,0 +1,62 @@
+[
+  {
+    "action": "modify",
+    "path": "caddytest/integration/intercept_test.go",
+    "role": "test"
+  },
+  {
+    "action": "create",
+    "path": "caddytest/integration/stream_detached_test.go",
+    "role": "test"
+  },
+  {
+    "action": "modify",
+    "path": "modules/caddyhttp/encode/encode.go",
+    "role": "production"
+  },
+  {
+    "action": "modify",
+    "path": "modules/caddyhttp/logging.go",
+    "role": "production"
+  },
+  {
+    "action": "modify",
+    "path": "modules/caddyhttp/responsewriter.go",
+    "role": "production"
+  },
+  {
+    "action": "modify",
+    "path": "modules/caddyhttp/responsewriter_test.go",
+    "role": "test"
+  },
+  {
+    "action": "modify",
+    "path": "modules/caddyhttp/reverseproxy/caddyfile.go",
+    "role": "production"
+  },
+  {
+    "action": "modify",
+    "path": "modules/caddyhttp/reverseproxy/metrics.go",
+    "role": "production"
+  },
+  {
+    "action": "modify",
+    "path": "modules/caddyhttp/reverseproxy/reverseproxy.go",
+    "role": "production"
+  },
+  {
+    "action": "create",
+    "path": "modules/caddyhttp/reverseproxy/stream_detached_test.go",
+    "role": "test"
+  },
+  {
+    "action": "modify",
+    "path": "modules/caddyhttp/reverseproxy/streaming.go",
+    "role": "production"
+  },
+  {
+    "action": "modify",
+    "path": "modules/caddyhttp/server.go",
+    "role": "production"
+  }
+]
