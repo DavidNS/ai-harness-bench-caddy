@@ -199,6 +199,26 @@ func (sa *StringArray) UnmarshalJSON(b []byte) error {
 	return errors.New("unsupported type")
 }
 
+// accessLog is stored in the request context when the request is
+// access-logged, so handlers can reach the loggers of the request.
+type accessLog struct {
+	server *Server
+	logger *zap.Logger
+}
+
+// AccessLoggers returns the loggers the access log entries of r are
+// emitted to, honoring the server's per-host logger names, or nil if
+// the request is not access-logged. The result does not reference r,
+// so it can be used after the request has been handled.
+func AccessLoggers(r *http.Request) []*zap.Logger {
+	al, ok := r.Context().Value(accessLogCtxKey).(accessLog)
+	if !ok {
+		return nil
+	}
+	// requests are only access logged when the server has log config
+	return al.server.Logs.wrapLogger(al.logger, r)
+}
+
 // errLogValues inspects err and returns the status code
 // to use, the error log message, and any extra fields.
 // If err is a HandlerError, the returned values will
@@ -286,6 +306,9 @@ const (
 
 	// For adding additional fields to the access logs
 	ExtraLogFieldsCtxKey caddy.CtxKey = "extra_log_fields"
+
+	// Context key holding the access log of the request, if any
+	accessLogCtxKey caddy.CtxKey = "access_log"
 
 	// Variable name used to indicate the logger to be used
 	AccessLoggerNameVarKey string = "access_logger_names"

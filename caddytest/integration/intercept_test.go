@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/caddyserver/caddy/v2/caddytest"
@@ -37,6 +38,52 @@ func TestIntercept(t *testing.T) {
 	}
 
 	tester.AssertGetResponse("http://localhost:9080/no-intercept", 200, "I'm not a teapot")
+}
+
+// An upgrade is not a response to intercept: a catch-all handle_response must
+// leave a 101 alone (the connection is hijacked, nothing may be written to
+// it afterwards), while it still applies to every other response.
+func TestInterceptUpgrade(t *testing.T) {
+	for name, options := range map[string]string{
+		"default":  "",
+		"detached": "stream_detached",
+	} {
+		t.Run(name, func(t *testing.T) {
+			newUpgradeBackend(t, "127.0.0.1:9081")
+			path := logFile(t)
+			tester := caddytest.NewTester(t)
+			tester.InitServer(streamGlobalOptions+`
+			localhost:9080 {
+				log {
+					output file "`+path+`"
+				}
+				route {
+					intercept {
+						handle_response {
+							respond "intercepted" 203
+						}
+					}
+					reverse_proxy 127.0.0.1:9081 {
+						`+options+`
+					}
+				}
+			}`, "caddyfile")
+
+			tester.AssertGetResponse("http://localhost:9080/plain", 203, "intercepted")
+
+			ws := dialWS(t, "/ws")
+			ws.echo(t, "through intercept")
+			ws.echo(t, "and again")
+			ws.conn.Close()
+
+			eventually(t, "the upgrade to be logged", func() bool {
+				return len(findLog(path, "handled request", "/ws")) == 1
+			})
+			if status := findLog(path, "handled request", "/ws")[0]["status"]; status != float64(http.StatusSwitchingProtocols) {
+				t.Errorf("logged status = %v, want 101", status)
+			}
+		})
+	}
 }
 
 func TestInterceptReplaceStatusWithMatcher(t *testing.T) {

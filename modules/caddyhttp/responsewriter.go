@@ -70,6 +70,7 @@ type responseRecorder struct {
 	size         int
 	wroteHeader  bool
 	stream       bool
+	hijacked     bool
 
 	readSize *int
 }
@@ -146,13 +147,24 @@ func NewResponseRecorder(w http.ResponseWriter, buf *bytes.Buffer, shouldBuffer 
 // ResponseWriter unless the response is to be buffered instead.
 // 1xx responses are never buffered.
 func (rr *responseRecorder) WriteHeader(statusCode int) {
-	if rr.wroteHeader {
+	// once the connection is hijacked the response belongs to the
+	// hijacker; nothing may reach the connection anymore
+	if rr.hijacked || rr.wroteHeader {
 		return
 	}
 
 	// save statusCode always, in case HTTP middleware upgrades websocket
 	// connections by manually setting headers and writing status 101
 	rr.statusCode = statusCode
+
+	// 101 Switching Protocols is the final response of an upgrade:
+	// it is never buffered and no other status may follow it
+	if statusCode == http.StatusSwitchingProtocols {
+		rr.stream = true
+		rr.wroteHeader = true
+		rr.ResponseWriterWrapper.WriteHeader(statusCode)
+		return
+	}
 
 	// decide whether we should buffer the response
 	if rr.shouldBuffer == nil {
@@ -173,6 +185,9 @@ func (rr *responseRecorder) WriteHeader(statusCode int) {
 }
 
 func (rr *responseRecorder) Write(data []byte) (int, error) {
+	if rr.hijacked {
+		return 0, http.ErrHijacked
+	}
 	rr.WriteHeader(http.StatusOK)
 	var n int
 	var err error
@@ -187,6 +202,9 @@ func (rr *responseRecorder) Write(data []byte) (int, error) {
 }
 
 func (rr *responseRecorder) ReadFrom(r io.Reader) (int64, error) {
+	if rr.hijacked {
+		return 0, http.ErrHijacked
+	}
 	rr.WriteHeader(http.StatusOK)
 	var n int64
 	var err error
@@ -219,10 +237,13 @@ func (rr *responseRecorder) Buffer() *bytes.Buffer {
 
 // Buffered returns whether rr has decided to buffer the response.
 func (rr *responseRecorder) Buffered() bool {
-	return !rr.stream
+	return !rr.stream && !rr.hijacked
 }
 
 func (rr *responseRecorder) WriteResponse() error {
+	if rr.hijacked {
+		return nil
+	}
 	if rr.statusCode == 0 {
 		// could happen if no handlers actually wrote anything,
 		// and this prevents a panic; status must be > 0
@@ -239,6 +260,9 @@ func (rr *responseRecorder) WriteResponse() error {
 // FlushError will suppress actual flushing if the response is buffered. See:
 // https://github.com/caddyserver/caddy/issues/6144
 func (rr *responseRecorder) FlushError() error {
+	if rr.hijacked {
+		return http.ErrHijacked
+	}
 	if rr.stream {
 		//nolint:bodyclose
 		return http.NewResponseController(rr.ResponseWriterWrapper).Flush()
@@ -258,6 +282,7 @@ func (rr *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	rr.hijacked = true
 	// Per http documentation, returned bufio.Writer is empty, but bufio.Read maybe not
 	conn = &hijackedConn{conn, rr}
 	brw.Writer.Reset(conn)
@@ -279,6 +304,14 @@ func (rr *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 type hijackedConn struct {
 	net.Conn
 	rr *responseRecorder
+}
+
+// RawConn returns the connection underneath the size-tracking wrapper,
+// so that long-lived users of the connection can bypass the wrapper
+// and its unsynchronized counters. It deliberately is not named Unwrap:
+// only wrappers created by the response recorder may be stripped off.
+func (hc *hijackedConn) RawConn() net.Conn {
+	return hc.Conn
 }
 
 func (hc *hijackedConn) updateReadSize(n int) {

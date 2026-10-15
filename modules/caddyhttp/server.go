@@ -676,6 +676,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// capture the original version of the request
 		accLog := s.accessLogger.WithLazy(loggableReq)
 
+		// let handlers (e.g. long-lived streams outliving the access log
+		// entry of their request) emit entries to this request's access logs
+		r = r.WithContext(context.WithValue(r.Context(), accessLogCtxKey, accessLog{server: s, logger: accLog}))
+
 		defer s.logRequest(accLog, r, wrec, &duration, &writeErr, repl, bodyReader, shouldLogCredentials)
 
 		// if the request went past the write timeout, flush so the access log can
