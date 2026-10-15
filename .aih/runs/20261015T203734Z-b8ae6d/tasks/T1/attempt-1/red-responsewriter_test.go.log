@@ -1,0 +1,9 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261015T203723Z/worktrees/20261015T203734Z-b8ae6d-red golang:1.27-bookworm go test -count=1 -timeout 30m ./modules/caddyhttp
+FAIL	github.com/caddyserver/caddy/v2/modules/caddyhttp [build failed]
+FAIL
+# github.com/caddyserver/caddy/v2/modules/caddyhttp [github.com/caddyserver/caddy/v2/modules/caddyhttp.test]
+modules/caddyhttp/responsewriter_test.go:109:12: undefined: AccessLoggers
+modules/caddyhttp/responsewriter_test.go:114:57: undefined: accessLogCtxKey
+modules/caddyhttp/responsewriter_test.go:114:74: undefined: accessLog
+modules/caddyhttp/responsewriter_test.go:115:12: undefined: AccessLoggers
+

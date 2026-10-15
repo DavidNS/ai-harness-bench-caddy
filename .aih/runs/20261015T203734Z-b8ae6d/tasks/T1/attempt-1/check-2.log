@@ -1,0 +1,14 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261015T203723Z/worktrees/20261015T203734Z-b8ae6d golang:1.27-bookworm go test -count=1 -timeout 30m ./modules/caddyhttp/reverseproxy
+{"level":"error","ts":1792097395.0341935,"msg":"can't switch protocols using non-Hijacker ResponseWriter","type":"*httptest.ResponseRecorder"}
+{"level":"error","ts":1792097395.0343046,"msg":"can't switch protocols using non-Hijacker ResponseWriter","type":"*httptest.ResponseRecorder"}
+{"level":"warn","ts":1792097395.0350094,"msg":"The 'tls_trusted_ca_certs' field is deprecated. Use the 'tls_trust_pool' field instead."}
+{"level":"warn","ts":1792097395.0351264,"msg":"The 'tls_trusted_ca_certs' field is deprecated. Use the 'tls_trust_pool' field instead."}
+--- FAIL: TestUpgradedStreamRunReload (0.00s)
+    stream_detached_test.go:542: closeForReload() error = close tcp 127.0.0.1:37526->127.0.0.1:45425: use of closed network connection
+--- FAIL: TestHandlerNotDetachedStreamClosedOnCleanup (0.40s)
+    --- FAIL: TestHandlerNotDetachedStreamClosedOnCleanup/immediately (0.00s)
+        stream_detached_test.go:863: write tcp 127.0.0.1:36966->127.0.0.1:43993: use of closed network connection
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy	1.060s
+FAIL
+

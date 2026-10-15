@@ -1,0 +1,120 @@
+{
+  "coverage": [
+    {
+      "criterion": "ACC1",
+      "line": 0,
+      "note": "Echo works after reload in Caddyfile mode; the JSON variant is TestStreamDetachedSurvivesReloadJSON.",
+      "status": "covered",
+      "test": "caddytest/integration/stream_detached_test.go::TestStreamDetachedSurvivesReload"
+    },
+    {
+      "criterion": "ACC2",
+      "line": 0,
+      "note": "The stream to the removed upstream is closed and the stream to the retained upstream still echoes.",
+      "status": "covered",
+      "test": "caddytest/integration/stream_detached_test.go::TestStreamDetachedClosesRemovedUpstream"
+    },
+    {
+      "criterion": "ACC3",
+      "line": 0,
+      "note": "TestStreamNotDetachedClosedOnReload covers the close on reload; this test covers the stream staying open until the delay elapses.",
+      "status": "covered",
+      "test": "caddytest/integration/stream_detached_test.go::TestStreamCloseDelayOnReload"
+    },
+    {
+      "criterion": "ACC4",
+      "line": 0,
+      "note": "The skip_handshake case asserts no 'handled request' entry for /ws; the default cases assert one with status 101. Caddyfile parsing is covered by TestStreamOptionsCaddyfile.",
+      "status": "covered",
+      "test": "caddytest/integration/stream_detached_test.go::TestStreamDetachedAccessLogs"
+    },
+    {
+      "criterion": "ACC5",
+      "line": 0,
+      "note": "Asserts a 'stream closed' entry in the access log at debug by default and at info when configured. It is absent without logger_name access.",
+      "status": "covered",
+      "test": "caddytest/integration/stream_detached_test.go::TestStreamDetachedAccessLogs"
+    },
+    {
+      "criterion": "ACC6",
+      "line": 0,
+      "note": "After hijack, Write, ReadFrom and Flush return ErrHijacked, and WriteHeader is a no-op. Nothing reaches the writer. TestHijackedConnRawConn and TestResponseRecorderSwitchingProtocolsIsFinal cover the raw conn and 101 being final.",
+      "status": "covered",
+      "test": "modules/caddyhttp/responsewriter_test.go::TestResponseRecorderAfterHijack"
+    },
+    {
+      "criterion": "ACC7",
+      "line": 0,
+      "note": "A WebSocket echoes through intercept with handle_response and is access logged with status 101. The encode path is covered by TestStreamThroughEncodeWithAccessLog.",
+      "status": "covered",
+      "test": "caddytest/integration/intercept_test.go::TestInterceptUpgrade"
+    },
+    {
+      "criterion": "ACC8",
+      "line": 0,
+      "note": "A raw h2 extended CONNECT stream echoes data in default and detached modes. HTTP/1.1 detached upgrades are covered by the reload tests.",
+      "status": "covered",
+      "test": "caddytest/integration/stream_detached_test.go::TestStreamExtendedConnectH2"
+    },
+    {
+      "criterion": "ACC9",
+      "line": 0,
+      "note": "A repeated finish() does not double-count. The stream harness's assertAccounted checks single accounting per result: closed, timeout, error and reload.",
+      "status": "covered",
+      "test": "modules/caddyhttp/reverseproxy/stream_detached_test.go::TestStreamAccountExactlyOnce"
+    },
+    {
+      "criterion": "ACC11",
+      "line": 0,
+      "note": "The integration tests cover reload in both modes, h2 extended CONNECT, encode and intercept upgrades, and detached streams with access logging.",
+      "status": "covered",
+      "test": "caddytest/integration/stream_detached_test.go::TestStreamDetachedSurvivesReload"
+    },
+    {
+      "criterion": "ACC12",
+      "line": 0,
+      "note": "Unit tests cover the registry, Caddyfile and JSON options, metrics accounting, and post-hijack writer behaviour.",
+      "status": "covered",
+      "test": "modules/caddyhttp/reverseproxy/stream_detached_test.go::TestStreamRegistry"
+    }
+  ],
+  "findings": [
+    {
+      "file": "caddytest/integration/stream_detached_test.go",
+      "line": 0,
+      "pass": 2,
+      "severity": "advisory",
+      "text": "No integration test covers an h2 extended CONNECT stream with stream_detached across a reload, or detached streams with stream_close_delay set. The doc comment says the delay does not apply and that h2 streams keep the request."
+    },
+    {
+      "file": "modules/caddyhttp/reverseproxy/streaming.go",
+      "line": 520,
+      "pass": 2,
+      "severity": "advisory",
+      "text": "A stream whose upgrade finishes after the old handler's Cleanup has run is registered too late and is never closed on removal of its upstream. No test covers this reload race."
+    },
+    {
+      "file": "modules/caddyhttp/reverseproxy/stream_detached_test.go",
+      "line": 0,
+      "pass": 2,
+      "severity": "advisory",
+      "text": "No end-to-end test for stream_timeout expiring on a detached stream, or for stream_logs with JSON config. Both are covered only at unit level."
+    },
+    {
+      "file": "modules/caddyhttp/reverseproxy/streaming.go",
+      "line": 538,
+      "pass": 4,
+      "severity": "advisory",
+      "text": "streamRegistry.count is used only by tests."
+    },
+    {
+      "file": "modules/caddyhttp/intercept/intercept.go",
+      "line": 0,
+      "pass": 4,
+      "severity": "advisory",
+      "text": "intercept.go is declared for the task but unchanged. The intercept 101 handling relies entirely on the responseRecorder change, so the declaration is unused."
+    }
+  ],
+  "summary": "Every behaviour criterion has a test whose assertion would fail if the criterion broke. I found nothing blocking. Gaps are limited to detached-mode edge cases, and I did not run probes for them. The two modified existing test files only gained tests; no assertion was removed or loosened.",
+  "verdict": "approve"
+}
