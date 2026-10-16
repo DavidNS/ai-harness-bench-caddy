@@ -1,0 +1,114 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261016T033324Z/worktrees/20261016T033330Z-673f8e golang:1.27-bookworm go test -count=1 -timeout 30m ./caddytest/integration
+a":{"sans":["a.caddy.localhost"]}}
+{"level":"info","ts":1792122784.4622667,"logger":"http.auto_https","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"debug","ts":1792122784.4622786,"logger":"http.auto_https","msg":"adjusted config","tls":{"automation":{"policies":[{}]}},"http":{"http_port":9080,"https_port":9443,"grace_period":1,"servers":{"remaining_auto_https_redirects":{"listen":[":9080"],"routes":[{},{}]},"srv0":{"listen":[":9443"],"routes":[{"handle":[{"handler":"subroute","routes":[{"handle":[{"encodings":{"gzip":{}},"handler":"encode"}]},{"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"localhost:54321"}]}],"match":[{"path":["/tov2ray"]}]}]}],"terminal":true}],"tls_connection_policies":[{"certificate_selection":{"any_tag":["cert0"]},"default_sni":"a.caddy.localhost"}],"automatic_https":{}}}}}
+{"level":"debug","ts":1792122784.4624956,"logger":"http","msg":"starting server loop","address":"[::]:9443","tls":true,"http3":false}
+{"level":"info","ts":1792122784.4625247,"logger":"http","msg":"enabling HTTP/3 listener","addr":":9443"}
+{"level":"info","ts":1792122784.4625328,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"debug","ts":1792122784.462559,"logger":"http","msg":"starting server loop","address":"[::]:9080","tls":false,"http3":false}
+{"level":"warn","ts":1792122784.4625645,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792122784.4625664,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792122784.4625683,"logger":"http.log","msg":"server running","name":"remaining_auto_https_redirects","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1792122784.4625704,"logger":"pki.ca.local","msg":"root certificate trust store installation disabled; unconfigured clients may show warnings","path":"storage:pki/authorities/local/root.crt"}
+{"level":"debug","ts":1792122784.4625802,"logger":"events","msg":"event","name":"started","id":"59cde718-01e2-4e1c-b50e-dfb2d647eba2","origin":"","data":null}
+{"level":"info","ts":1792122784.462608,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"error","ts":1792122784.4626591,"logger":"http","msg":"server shutdown","error":"server graceful shutdown 0s timeout","addresses":[":9443"]}
+{"level":"info","ts":1792122784.4628255,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792122784.4628527,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792122784.4629884,"msg":"caddytest: config load time took 5.897998ms"}
+{"level":"info","ts":1792122784.4638157,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45764","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.4641614,"msg":"caddytest: redirecting the dialer from 127.0.0.1:9443 to 127.0.0.1:9443"}
+{"level":"debug","ts":1792122784.4647417,"logger":"events","msg":"event","name":"tls_get_certificate","id":"b08c5b1c-c381-48ba-83ad-daa3c63a3247","origin":"tls","data":{"client_hello":{"CipherSuites":[49195,49199,49196,49200,52393,52392,49161,49171,49162,49172,4865,4866,4867],"ServerName":"","SupportedCurves":[4588,4587,4589,29,23,24,25],"SupportedPoints":"AA==","SignatureSchemes":[2308,2309,2310,2052,1027,2055,2053,2054,1025,1281,1537,1283,1539],"SupportedProtos":["h2","http/1.1"],"SupportedVersions":[772,771],"RemoteAddr":{"IP":"127.0.0.1","Port":58586,"Zone":""},"LocalAddr":{"IP":"127.0.0.1","Port":9443,"Zone":""}}}}
+{"level":"debug","ts":1792122784.4648657,"logger":"tls.handshake","msg":"no matching certificate; will choose from all certificates","identifier":"127.0.0.1"}
+{"level":"debug","ts":1792122784.464871,"logger":"tls.handshake","msg":"choosing certificate","identifier":"127.0.0.1","num_choices":1}
+{"level":"debug","ts":1792122784.4648757,"logger":"tls.handshake","msg":"custom certificate selection results","identifier":"127.0.0.1","subjects":["a.caddy.localhost"],"managed":false,"issuer_key":"","hash":"205fb33c3301100a987798c3f0831eecbecb8143dde9796d253e7a8c23722e67"}
+{"level":"debug","ts":1792122784.4648805,"logger":"tls.handshake","msg":"matched certificate in cache","remote_ip":"127.0.0.1","remote_port":"58586","subjects":["a.caddy.localhost"],"managed":false,"expiration":1899485418,"hash":"205fb33c3301100a987798c3f0831eecbecb8143dde9796d253e7a8c23722e67"}
+{"level":"info","ts":1792122784.4661736,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"debug","ts":1792122784.4666972,"logger":"http.handlers.reverse_proxy","msg":"selected upstream","dial":"localhost:54321","total_upstreams":1}
+{"level":"debug","ts":1792122784.4677258,"logger":"http.handlers.reverse_proxy","msg":"upstream roundtrip","upstream":"localhost:54321","duration":0.000980566,"request":{"remote_ip":"127.0.0.1","remote_port":"58586","client_ip":"127.0.0.1","proto":"HTTP/2.0","method":"PUT","host":"127.0.0.1:9443","uri":"/tov2ray","headers":{"X-Forwarded-Proto":["https"],"X-Forwarded-Host":["127.0.0.1:9443"],"Via":["2.0 Caddy"],"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/2.0"],"X-Forwarded-For":["127.0.0.1"]},"tls":{"resumed":false,"version":772,"cipher_suite":4865,"proto":"h2","server_name":"","ech":false}},"headers":{"Content-Encoding":["gzip"],"Date":["Fri, 16 Oct 2026 03:53:04 GMT"],"Content-Length":["1049"]},"status":200}
+{"level":"info","ts":1792122784.4701653,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45764","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"]}}
+{"level":"info","ts":1792122784.4705436,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45764","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.470814,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"45764","headers":{"User-Agent":["Go-http-client/1.1"],"Content-Length":["292"],"Content-Type":["text/caddyfile"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.4721003,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//[::1]:2999","//127.0.0.1:2999","//localhost:2999"]}
+{"level":"warn","ts":1792122784.4721801,"logger":"http.auto_https","msg":"server is listening only on the HTTP port, so no automatic HTTPS will be applied to this server","server_name":"srv0","http_port":9080}
+{"level":"info","ts":1792122784.4722853,"logger":"pki.ca.local","msg":"root certificate trust store installation disabled; unconfigured clients may show warnings","path":"storage:pki/authorities/local/root.crt"}
+{"level":"warn","ts":1792122784.4723456,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792122784.4723504,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792122784.4723525,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"debug","ts":1792122784.4723682,"logger":"events","msg":"event","name":"stopping","id":"8d98b736-1c41-4faf-904d-4819d1e0453f","origin":"","data":null}
+{"level":"info","ts":1792122784.472397,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"error","ts":1792122784.4724362,"logger":"http","msg":"server shutdown","error":"server graceful shutdown 0s timeout","addresses":[":9443"]}
+{"level":"info","ts":1792122784.472596,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792122784.4726205,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792122784.472701,"msg":"caddytest: config load time took 1.992735ms"}
+{"level":"info","ts":1792122784.473435,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792122784.4735441,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45778","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"]}}
+{"level":"info","ts":1792122784.4761581,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45778","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.4763963,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45778","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"]}}
+{"level":"info","ts":1792122784.4766438,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"45778","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"],"Content-Length":["292"],"Content-Type":["text/caddyfile"]}}
+{"level":"info","ts":1792122784.4777257,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//localhost:2999","//[::1]:2999","//127.0.0.1:2999"]}
+{"level":"warn","ts":1792122784.4778023,"logger":"http.auto_https","msg":"server is listening only on the HTTP port, so no automatic HTTPS will be applied to this server","server_name":"srv0","http_port":9080}
+{"level":"info","ts":1792122784.4778836,"logger":"pki.ca.local","msg":"root certificate trust store installation disabled; unconfigured clients may show warnings","path":"storage:pki/authorities/local/root.crt"}
+{"level":"warn","ts":1792122784.477942,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792122784.4779656,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792122784.4779696,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1792122784.4779792,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"info","ts":1792122784.4781184,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792122784.4781456,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792122784.4782324,"msg":"caddytest: config load time took 1.660713ms"}
+{"level":"info","ts":1792122784.4789758,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45782","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.4791138,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792122784.4792545,"msg":"caddytest: redirecting the dialer from localhost:9080 to 127.0.0.1:9080"}
+{"level":"info","ts":1792122784.5023456,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45782","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.5026598,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45782","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.502989,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"45782","headers":{"User-Agent":["Go-http-client/1.1"],"Content-Length":["302"],"Content-Type":["text/caddyfile"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.504422,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//127.0.0.1:2999","//localhost:2999","//[::1]:2999"]}
+{"level":"warn","ts":1792122784.50452,"logger":"http.auto_https","msg":"server is listening only on the HTTP port, so no automatic HTTPS will be applied to this server","server_name":"srv0","http_port":9080}
+{"level":"warn","ts":1792122784.5046802,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792122784.504702,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792122784.5047064,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1792122784.504714,"logger":"pki.ca.local","msg":"root certificate trust store installation disabled; unconfigured clients may show warnings","path":"storage:pki/authorities/local/root.crt"}
+{"level":"info","ts":1792122784.5047257,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"info","ts":1792122784.504882,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792122784.504913,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792122784.505033,"msg":"caddytest: config load time took 2.189448ms"}
+{"level":"info","ts":1792122784.5059004,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792122784.505937,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45790","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.5277138,"msg":"caddytest: redirecting the dialer from localhost:9080 to 127.0.0.1:9080"}
+{"level":"info","ts":1792122784.5307589,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45790","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.5309286,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45790","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.5311744,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"45790","headers":{"User-Agent":["Go-http-client/1.1"],"Content-Length":["287"],"Content-Type":["text/caddyfile"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.532446,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//localhost:2999","//[::1]:2999","//127.0.0.1:2999"]}
+{"level":"warn","ts":1792122784.5325284,"logger":"http.auto_https","msg":"server is listening only on the HTTP port, so no automatic HTTPS will be applied to this server","server_name":"srv0","http_port":9080}
+{"level":"info","ts":1792122784.53265,"logger":"pki.ca.local","msg":"root certificate trust store installation disabled; unconfigured clients may show warnings","path":"storage:pki/authorities/local/root.crt"}
+{"level":"warn","ts":1792122784.5327098,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792122784.5327203,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792122784.5327227,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1792122784.5327363,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"info","ts":1792122784.5328918,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792122784.532917,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792122784.5330012,"msg":"caddytest: config load time took 1.91883ms"}
+{"level":"info","ts":1792122784.5337393,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792122784.533873,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45802","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.557768,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45802","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.5580823,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45802","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.5584366,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"45802","headers":{"User-Agent":["Go-http-client/1.1"],"Content-Length":["319"],"Content-Type":["text/caddyfile"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.559867,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//localhost:2999","//[::1]:2999","//127.0.0.1:2999"]}
+{"level":"warn","ts":1792122784.5599515,"logger":"http.auto_https","msg":"server is listening only on the HTTP port, so no automatic HTTPS will be applied to this server","server_name":"srv0","http_port":9080}
+{"level":"warn","ts":1792122784.5600836,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792122784.5601091,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792122784.5601137,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1792122784.5601223,"logger":"pki.ca.local","msg":"root certificate trust store installation disabled; unconfigured clients may show warnings","path":"storage:pki/authorities/local/root.crt"}
+{"level":"info","ts":1792122784.5601556,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"info","ts":1792122784.5607834,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792122784.5608146,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792122784.5609703,"msg":"caddytest: config load time took 2.65408ms"}
+{"level":"info","ts":1792122784.5614796,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792122784.5620766,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"45814","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122784.583996,"msg":"caddytest: redirecting the dialer from localhost:9080 to 127.0.0.1:9080"}
+--- FAIL: TestExtendedConnectWebsocketOverH2 (0.00s)
+    stream_upgrade_test.go:263: test process failed: exec: "caddy": executable file not found in $PATH
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/caddytest/integration	12.101s
+FAIL
+

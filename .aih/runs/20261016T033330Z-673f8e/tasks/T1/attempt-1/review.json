@@ -1,0 +1,142 @@
+{
+  "coverage": [
+    {
+      "criterion": "ACC1",
+      "line": 222,
+      "note": "Real server: the stream survives a reload that keeps its upstream and is closed after a reload that removes it.",
+      "probe": {
+        "content": "package reverseproxy\n\nimport \"testing\"\n\nfunc TestAihProbeRegistry(t *testing.T) {\n\tr := newStreamRegistry()\n\tr.addLive([]string{\"a\", \"b\"})\n\tr.addLive([]string{\"a\", \"b\"})\n\ts := &detachedStream{upstream: \"b\"}\n\trm := r.add(s)\n\tdefer rm()\n\tif o := r.removeLive([]string{\"a\", \"b\"}); len(o) != 0 {\n\t\tt.Fatalf(\"closed %d streams though b is still live\", len(o))\n\t}\n\tif o := r.removeLive([]string{\"a\", \"b\"}); len(o) != 1 {\n\t\tt.Fatalf(\"got %d orphans, want 1\", len(o))\n\t}\n}\n",
+        "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+      },
+      "status": "covered",
+      "test": "caddytest/integration/stream_reload_test.go::TestDetachedStreamFollowsItsUpstream"
+    },
+    {
+      "criterion": "ACC2",
+      "line": 84,
+      "note": "Caddyfile and JSON parsing plus defaults are asserted (TestStreamOptionsJSON).",
+      "probe": {
+        "content": "package reverseproxy\n\nimport (\n\t\"encoding/json\"\n\t\"testing\"\n\n\t\"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile\"\n)\n\nfunc TestAihProbeStreamOptions(t *testing.T) {\n\tvar h Handler\n\tif err := h.UnmarshalCaddyfile(caddyfile.NewTestDispenser(`reverse_proxy a:1 {\n\t\tstream_detached\n\t}`)); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tvar j Handler\n\tif err := json.Unmarshal([]byte(`{\"stream_detached\":true}`), &j); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif !h.StreamDetached || !j.StreamDetached {\n\t\tt.Fatal(\"not set\")\n\t}\n}\n",
+        "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+      },
+      "status": "covered",
+      "test": "modules/caddyhttp/reverseproxy/stream_options_test.go::TestStreamOptionsCaddyfile"
+    },
+    {
+      "criterion": "ACC3",
+      "line": 196,
+      "note": "Immediate close (TestStreamIsClosedOnReload) and delayed close are both checked on a real server.",
+      "probe": {
+        "content": "package reverseproxy\n\nimport \"testing\"\n\nfunc TestAihProbeDefaultNotDetached(t *testing.T) {\n\tvar h Handler\n\tif h.StreamDetached {\n\t\tt.Fatal(\"default must be false\")\n\t}\n}\n",
+        "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+      },
+      "status": "covered",
+      "test": "caddytest/integration/stream_reload_test.go::TestStreamIsClosedAfterCloseDelay"
+    },
+    {
+      "criterion": "ACC4",
+      "line": 206,
+      "note": "The handshake is absent from the access log with skip_handshake and present by default (TestDetachedStreamCloseLogAfterReload).",
+      "probe": {
+        "content": "package reverseproxy\n\nimport (\n\t\"testing\"\n\n\t\"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile\"\n)\n\nfunc TestAihProbeSkipHandshake(t *testing.T) {\n\tvar h Handler\n\tif err := h.UnmarshalCaddyfile(caddyfile.NewTestDispenser(`reverse_proxy a:1 {\n\t\tstream_logs {\n\t\t\tskip_handshake\n\t\t}\n\t}`)); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif !h.StreamLogs.SkipHandshake {\n\t\tt.Fatal(\"not set\")\n\t}\n}\n",
+        "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+      },
+      "status": "covered",
+      "test": "caddytest/integration/stream_upgrade_test.go::TestStreamLogsSkipHandshake"
+    },
+    {
+      "criterion": "ACC5",
+      "line": 139,
+      "note": "The close entry has logger http.log.access.access and level debug, and is written after the reload. The warn level is checked in TestStreamLogsSkipHandshake.",
+      "probe": {
+        "content": "package reverseproxy\n\nimport (\n\t\"testing\"\n\n\t\"go.uber.org/zap/zapcore\"\n)\n\nfunc TestAihProbeLevelDefault(t *testing.T) {\n\tl, err := parseStreamLogLevel(\"\")\n\tif err != nil || l != zapcore.DebugLevel {\n\t\tt.Fatal(l, err)\n\t}\n}\n",
+        "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+      },
+      "status": "covered",
+      "test": "caddytest/integration/stream_upgrade_test.go::TestDetachedStreamCloseLogAfterReload"
+    },
+    {
+      "criterion": "ACC6",
+      "line": 93,
+      "note": "The recorder, encode and intercept each have their own hijack and 101 tests that assert no further writes reach the underlying writer.",
+      "probe": {
+        "content": "package reverseproxy\n\nimport \"testing\"\n\nfunc TestAihProbeNoop(t *testing.T) {}\n",
+        "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+      },
+      "status": "covered",
+      "test": "modules/caddyhttp/responsewriter_test.go::TestResponseRecorderNoWritesAfterHijack"
+    },
+    {
+      "criterion": "ACC7",
+      "line": 263,
+      "note": "Echo through intercept with handle_response and through encode, with access logging, and an ordinary response is still intercepted.",
+      "probe": {
+        "content": "package reverseproxy\n\nimport \"testing\"\n\nfunc TestAihProbeNoop2(t *testing.T) {}\n",
+        "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+      },
+      "status": "covered",
+      "test": "caddytest/integration/stream_upgrade_test.go::TestUpgradeThroughIntercept"
+    },
+    {
+      "criterion": "ACC8",
+      "line": 370,
+      "note": "A real h2 extended CONNECT is echoed. The HTTP/1.1 upgrade with stream_detached is covered by TestDetachedStreamFollowsItsUpstream.",
+      "probe": {
+        "content": "package reverseproxy\n\nimport \"testing\"\n\nfunc TestAihProbeNoop3(t *testing.T) {}\n",
+        "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+      },
+      "status": "covered",
+      "test": "caddytest/integration/stream_upgrade_test.go::TestExtendedConnectWebsocketOverH2"
+    },
+    {
+      "criterion": "ACC9",
+      "line": 68,
+      "note": "The metrics test and TestUpgradedStreamIsAccountedOnce in streaming_test.go check that the gauge returns to its starting value and each counter moves once.",
+      "probe": {
+        "content": "package reverseproxy\n\nimport (\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestAihProbeMetrics(t *testing.T) {\n\tbefore := snapshotStreamMetrics(t)\n\tstreamStarted()\n\tstreamFinished(streamResultError, time.Second, 3, 4)\n\tafter := snapshotStreamMetrics(t)\n\tif after.active != before.active || after.closed[\"error\"]-before.closed[\"error\"] != 1 {\n\t\tt.Fatal(\"accounting\")\n\t}\n}\n",
+        "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+      },
+      "status": "covered",
+      "test": "modules/caddyhttp/reverseproxy/metrics_test.go::TestStreamMetricsAccountEachStreamOnce"
+    },
+    {
+      "criterion": "ACC11",
+      "line": 175,
+      "note": "Integration tests cover the reload modes, h2 extended CONNECT, encode, intercept and detached access logging.",
+      "probe": {
+        "content": "package reverseproxy\n\nimport \"testing\"\n\nfunc TestAihProbeNoop4(t *testing.T) {}\n",
+        "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+      },
+      "status": "covered",
+      "test": "caddytest/integration/stream_reload_test.go::TestStreamIsClosedOnReload"
+    },
+    {
+      "criterion": "ACC12",
+      "line": 39,
+      "note": "Unit tests exist for the recorder, encode, intercept, registry and cleanup, metrics and Caddyfile parsing.",
+      "probe": {
+        "content": "package reverseproxy\n\nimport \"testing\"\n\nfunc TestAihProbeNoop5(t *testing.T) {}\n",
+        "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+      },
+      "status": "covered",
+      "test": "modules/caddyhttp/reverseproxy/streams_test.go::TestStreamRegistryOrphans"
+    }
+  ],
+  "findings": [
+    {
+      "file": "modules/caddyhttp/reverseproxy/streams.go",
+      "line": 140,
+      "pass": 2,
+      "severity": "advisory",
+      "text": "Streams to dynamic upstreams (keyed by di.String(), never in the live set) are never closed by a reload in detached mode; documented in the field comment but not tested."
+    },
+    {
+      "file": "modules/caddyhttp/reverseproxy/streams.go",
+      "line": 143,
+      "pass": 4,
+      "severity": "advisory",
+      "text": "removeLive deletes r.open[u] only for orphaned upstreams, and remove() leaves empty inner maps behind for live upstreams, a small leak that is harmless in practice."
+    }
+  ],
+  "verdict": "approve"
+}

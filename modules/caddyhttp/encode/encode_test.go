@@ -1,11 +1,15 @@
 package encode
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -394,6 +398,144 @@ func (mockEncoder) Write(p []byte) (n int, err error) { return len(p), nil }
 func (mockEncoder) Close() error                      { return nil }
 func (mockEncoder) Reset(w io.Writer)                 {}
 func (mockEncoder) Flush() error                      { return nil }
+
+// hijackSpy is a http.ResponseWriter that records what is written to it
+// and can be hijacked.
+type hijackSpy struct {
+	header   http.Header
+	statuses []int
+	body     []byte
+	peer     net.Conn
+}
+
+func (s *hijackSpy) Header() http.Header {
+	if s.header == nil {
+		s.header = make(http.Header)
+	}
+	return s.header
+}
+func (s *hijackSpy) WriteHeader(statusCode int) { s.statuses = append(s.statuses, statusCode) }
+func (s *hijackSpy) Write(d []byte) (int, error) {
+	s.body = append(s.body, d...)
+	return len(d), nil
+}
+
+func (s *hijackSpy) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	conn, peer := net.Pipe()
+	s.peer = peer
+	return conn, bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)), nil
+}
+
+func newTestEncode(t *testing.T) *Encode {
+	t.Helper()
+	enc := new(Encode)
+	enc.MinLength = 1 // compress everything
+	enc.writerPools = map[string]*sync.Pool{
+		"gzip": {New: func() any { return mockEncoder{} }},
+	}
+	ctx, cancel := caddy.NewContext(caddy.Context{Context: context.Background()})
+	t.Cleanup(cancel)
+	if err := enc.Provision(ctx); err != nil {
+		t.Fatalf("Provision failed: %v", err)
+	}
+	return enc
+}
+
+// An upgrade must go through encode untouched: the 101 is final, and once
+// the connection is hijacked nothing may be written to the response again.
+func TestServeHTTPUpgradeNeverWritesAfterHijack(t *testing.T) {
+	enc := newTestEncode(t)
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Accept-Encoding", "gzip")
+	r.Header.Set("Connection", "Upgrade")
+	r.Header.Set("Upgrade", "foo")
+
+	spy := &hijackSpy{}
+	var writeErr, readFromErr error
+	var flushErr error
+	err := enc.ServeHTTP(spy, r, caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusSwitchingProtocols)
+		conn, _, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		defer spy.peer.Close()
+
+		w.WriteHeader(http.StatusInternalServerError)
+		_, writeErr = w.Write([]byte("late body, long enough to be encoded"))
+		_, readFromErr = io.Copy(w, struct{ io.Reader }{strings.NewReader("late")})
+		flushErr = http.NewResponseController(w).Flush()
+		return nil
+	}))
+	if err != nil {
+		t.Fatalf("ServeHTTP error = %v", err)
+	}
+
+	if !errors.Is(writeErr, http.ErrHijacked) {
+		t.Errorf("Write() after hijack error = %v, want ErrHijacked", writeErr)
+	}
+	if !errors.Is(readFromErr, http.ErrHijacked) {
+		t.Errorf("ReadFrom() after hijack error = %v, want ErrHijacked", readFromErr)
+	}
+	if flushErr != nil {
+		t.Errorf("Flush() after hijack error = %v", flushErr)
+	}
+	if len(spy.statuses) != 1 || spy.statuses[0] != http.StatusSwitchingProtocols {
+		t.Errorf("underlying statuses = %v, want [101]", spy.statuses)
+	}
+	if len(spy.body) != 0 {
+		t.Errorf("underlying body = %q, want nothing", spy.body)
+	}
+	if ce := spy.Header().Get("Content-Encoding"); ce != "" {
+		t.Errorf("Content-Encoding = %q, want none for an upgrade", ce)
+	}
+}
+
+// Closing the encoder after a hijack must not write the pending status.
+func TestServeHTTPHijackWithoutStatusWritesNothing(t *testing.T) {
+	enc := newTestEncode(t)
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Accept-Encoding", "gzip")
+
+	spy := &hijackSpy{}
+	err := enc.ServeHTTP(spy, r, caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		conn, _, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		defer spy.peer.Close()
+		w.WriteHeader(http.StatusOK)
+		return nil
+	}))
+	if err != nil {
+		t.Fatalf("ServeHTTP error = %v", err)
+	}
+	if len(spy.statuses) != 0 {
+		t.Errorf("underlying statuses = %v, want none after hijack", spy.statuses)
+	}
+}
+
+func TestServeHTTPHijackNotSupported(t *testing.T) {
+	enc := newTestEncode(t)
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Accept-Encoding", "gzip")
+
+	var hijackErr error
+	err := enc.ServeHTTP(httptest.NewRecorder(), r, caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		_, _, hijackErr = http.NewResponseController(w).Hijack()
+		_, err := w.Write([]byte("still writable after a failed hijack"))
+		return err
+	}))
+	if err != nil {
+		t.Fatalf("ServeHTTP error = %v", err)
+	}
+	if !errors.Is(hijackErr, http.ErrNotSupported) {
+		t.Errorf("Hijack() error = %v, want ErrNotSupported", hijackErr)
+	}
+}
 
 func TestServeHTTPDefaultEncodingPreference(t *testing.T) {
 	enc := new(Encode)

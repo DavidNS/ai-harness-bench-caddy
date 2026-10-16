@@ -1,0 +1,196 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261016T033324Z/worktrees/20261016T033330Z-673f8e-red golang:1.27-bookworm go test -count=1 -timeout 30m ./caddytest/integration
+ initiated","duration":0.000000001}
+{"level":"info","ts":1792122922.6297598,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792122922.6298153,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792122922.6300159,"msg":"caddytest: config load time took 12.430841ms"}
+{"level":"info","ts":1792122922.6313436,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58228","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122922.6319335,"msg":"caddytest: redirecting the dialer from 127.0.0.1:9443 to 127.0.0.1:9443"}
+{"level":"info","ts":1792122922.6370463,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792122922.643434,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58228","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122922.6439323,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58228","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122922.6446798,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"58228","headers":{"User-Agent":["Go-http-client/1.1"],"Content-Length":["905"],"Content-Type":["application/json"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122922.6471064,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//localhost:2999","//[::1]:2999","//127.0.0.1:2999"]}
+{"level":"debug","ts":1792122922.6556034,"logger":"tls","msg":"stapling OCSP","error":"no OCSP stapling for [a.caddy.localhost]: no OCSP server specified in certificate"}
+{"level":"debug","ts":1792122922.6556726,"logger":"events","msg":"event","name":"cached_unmanaged_cert","id":"7684da99-7985-4967-9642-aacc60b0a944","origin":"tls","data":{"sans":["a.caddy.localhost"]}}
+{"level":"info","ts":1792122922.6557257,"logger":"http.auto_https","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"debug","ts":1792122922.6557527,"logger":"http.auto_https","msg":"adjusted config","tls":{"automation":{"policies":[{}]}},"http":{"http_port":9080,"https_port":9443,"grace_period":1,"servers":{"remaining_auto_https_redirects":{"listen":[":9080"],"routes":[{},{}]},"srv0":{"listen":[":9443"],"routes":[{"handle":[{"handler":"subroute","routes":[{"handle":[{"encodings":{"gzip":{}},"handler":"encode"}]},{"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"localhost:54321"}]}],"match":[{"path":["/tov2ray"]}]}]}],"terminal":true}],"tls_connection_policies":[{"certificate_selection":{"any_tag":["cert0"]},"default_sni":"a.caddy.localhost"}],"automatic_https":{}}}}}
+{"level":"info","ts":1792122922.6560369,"logger":"pki.ca.local","msg":"root certificate trust store installation disabled; unconfigured clients may show warnings","path":"storage:pki/authorities/local/root.crt"}
+{"level":"debug","ts":1792122922.6561952,"logger":"http","msg":"starting server loop","address":"[::]:9443","tls":true,"http3":false}
+{"level":"info","ts":1792122922.6562061,"logger":"http","msg":"enabling HTTP/3 listener","addr":":9443"}
+{"level":"info","ts":1792122922.6562161,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"debug","ts":1792122922.656256,"logger":"http","msg":"starting server loop","address":"[::]:9080","tls":false,"http3":false}
+{"level":"warn","ts":1792122922.6562908,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792122922.656297,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792122922.6562998,"logger":"http.log","msg":"server running","name":"remaining_auto_https_redirects","protocols":["h1","h2","h3"]}
+{"level":"debug","ts":1792122922.6563182,"logger":"events","msg":"event","name":"started","id":"9a51e93b-9391-47f7-8be9-3ff3ecd0d12e","origin":"","data":null}
+{"level":"info","ts":1792122922.6563344,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"error","ts":1792122922.6564167,"logger":"http","msg":"server shutdown","error":"server graceful shutdown 0s timeout","addresses":[":9443"]}
+{"level":"info","ts":1792122922.6566944,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792122922.6567445,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792122922.6569183,"msg":"caddytest: config load time took 12.474444ms"}
+{"level":"info","ts":1792122922.657936,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122922.6584117,"msg":"caddytest: redirecting the dialer from 127.0.0.1:9443 to 127.0.0.1:9443"}
+{"level":"debug","ts":1792122922.6593099,"logger":"events","msg":"event","name":"tls_get_certificate","id":"fbc00e84-d74d-44bf-9ec1-5a3d34be95d1","origin":"tls","data":{"client_hello":{"CipherSuites":[49195,49199,49196,49200,52393,52392,49161,49171,49162,49172,4865,4866,4867],"ServerName":"","SupportedCurves":[4588,4587,4589,29,23,24,25],"SupportedPoints":"AA==","SignatureSchemes":[2308,2309,2310,2052,1027,2055,2053,2054,1025,1281,1537,1283,1539],"SupportedProtos":["h2","http/1.1"],"SupportedVersions":[772,771],"RemoteAddr":{"IP":"127.0.0.1","Port":48080,"Zone":""},"LocalAddr":{"IP":"127.0.0.1","Port":9443,"Zone":""}}}}
+{"level":"debug","ts":1792122922.6594825,"logger":"tls.handshake","msg":"no matching certificate; will choose from all certificates","identifier":"127.0.0.1"}
+{"level":"debug","ts":1792122922.6594906,"logger":"tls.handshake","msg":"choosing certificate","identifier":"127.0.0.1","num_choices":1}
+{"level":"debug","ts":1792122922.6594965,"logger":"tls.handshake","msg":"custom certificate selection results","identifier":"127.0.0.1","subjects":["a.caddy.localhost"],"managed":false,"issuer_key":"","hash":"205fb33c3301100a987798c3f0831eecbecb8143dde9796d253e7a8c23722e67"}
+{"level":"debug","ts":1792122922.6595025,"logger":"tls.handshake","msg":"matched certificate in cache","remote_ip":"127.0.0.1","remote_port":"48080","subjects":["a.caddy.localhost"],"managed":false,"expiration":1899485418,"hash":"205fb33c3301100a987798c3f0831eecbecb8143dde9796d253e7a8c23722e67"}
+{"level":"debug","ts":1792122922.6622963,"logger":"http.handlers.reverse_proxy","msg":"selected upstream","dial":"localhost:54321","total_upstreams":1}
+{"level":"debug","ts":1792122922.664388,"logger":"http.handlers.reverse_proxy","msg":"upstream roundtrip","upstream":"localhost:54321","duration":0.002028054,"request":{"remote_ip":"127.0.0.1","remote_port":"48080","client_ip":"127.0.0.1","proto":"HTTP/2.0","method":"PUT","host":"127.0.0.1:9443","uri":"/tov2ray","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/2.0"],"X-Forwarded-For":["127.0.0.1"],"X-Forwarded-Proto":["https"],"X-Forwarded-Host":["127.0.0.1:9443"],"Via":["2.0 Caddy"]},"tls":{"resumed":false,"version":772,"cipher_suite":4865,"proto":"h2","server_name":"","ech":false}},"headers":{"Content-Encoding":["gzip"],"Date":["Fri, 16 Oct 2026 03:55:22 GMT"],"Content-Length":["1049"]},"status":200}
+{"level":"info","ts":1792122922.6646726,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792122922.668311,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122922.6689053,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122922.6694608,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"User-Agent":["Go-http-client/1.1"],"Content-Length":["292"],"Content-Type":["text/caddyfile"],"Accept-Encoding":["gzip"]}}
+{"level":"error","ts":1792122922.6698406,"logger":"admin.api","msg":"request error","error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_detached, at Caddyfile:17","status_code":400}
+{"level":"info","ts":1792122922.6700091,"msg":"caddytest: config load time took 762.858�s"}
+--- FAIL: TestDetachedStreamCloseLogAfterReload (0.01s)
+    caddytest.go:120: failed to load config: {"error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_detached, at Caddyfile:17"}
+    caddytest.go:124: failed ensuring config is running: unexpected end of JSON input
+    stream_upgrade_test.go:137: upgrade status = 308, want 101
+{"level":"info","ts":1792122922.6743238,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122922.6747315,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122922.6752658,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"User-Agent":["Go-http-client/1.1"],"Content-Length":["302"],"Content-Type":["text/caddyfile"],"Accept-Encoding":["gzip"]}}
+{"level":"error","ts":1792122922.6755724,"logger":"admin.api","msg":"request error","error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_logs, at Caddyfile:17","status_code":400}
+{"level":"info","ts":1792122922.6757581,"msg":"caddytest: config load time took 675.851�s"}
+--- FAIL: TestStreamLogsSkipHandshake (0.01s)
+    caddytest.go:120: failed to load config: {"error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_logs, at Caddyfile:17"}
+    caddytest.go:124: failed ensuring config is running: unexpected end of JSON input
+    stream_upgrade_test.go:185: upgrade status = 308, want 101
+{"level":"info","ts":1792122922.6783144,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122922.6785066,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"]}}
+{"level":"info","ts":1792122922.6786966,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"User-Agent":["Go-http-client/1.1"],"Content-Length":["287"],"Content-Type":["text/caddyfile"],"Accept-Encoding":["gzip"]}}
+{"level":"error","ts":1792122922.6788642,"logger":"admin.api","msg":"request error","error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_detached, at Caddyfile:17","status_code":400}
+{"level":"info","ts":1792122922.6790044,"msg":"caddytest: config load time took 400.63�s"}
+--- FAIL: TestUpgradeThroughEncode (0.00s)
+    caddytest.go:120: failed to load config: {"error":"adapting config using caddyfile adapter: parsing caddyfile tokens for 'reverse_proxy': unrecognized subdirective stream_detached, at Caddyfile:17"}
+    caddytest.go:124: failed ensuring config is running: unexpected end of JSON input
+    stream_upgrade_test.go:212: upgrade status = 308, want 101
+{"level":"info","ts":1792122922.6812937,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122922.6814194,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122922.6816406,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"58238","headers":{"Content-Length":["319"],"Content-Type":["text/caddyfile"],"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"]}}
+{"level":"info","ts":1792122922.682914,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//localhost:2999","//[::1]:2999","//127.0.0.1:2999"]}
+{"level":"warn","ts":1792122922.6829927,"logger":"http.auto_https","msg":"server is listening only on the HTTP port, so no automatic HTTPS will be applied to this server","server_name":"srv0","http_port":9080}
+{"level":"info","ts":1792122922.6830957,"logger":"pki.ca.local","msg":"root certificate trust store installation disabled; unconfigured clients may show warnings","path":"storage:pki/authorities/local/root.crt"}
+{"level":"warn","ts":1792122922.6831546,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792122922.6831596,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792122922.6831622,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"debug","ts":1792122922.6831765,"logger":"events","msg":"event","name":"stopping","id":"f61d82e5-b92f-4177-8cb0-9f5c9a47ede8","origin":"","data":null}
+{"level":"info","ts":1792122922.6832073,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"error","ts":1792122922.68325,"logger":"http","msg":"server shutdown","error":"server graceful shutdown 0s timeout","addresses":[":9443"]}
+{"level":"info","ts":1792122922.6833699,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792122922.683393,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792122922.6834526,"msg":"caddytest: config load time took 1.914345ms"}
+{"level":"info","ts":1792122922.684251,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792122922.6843565,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58242","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792122927.6942415,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"58242","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+--- FAIL: TestUpgradeThroughIntercept (5.01s)
+    stream_upgrade_test.go:243: timed out waiting for the stream close entry; got entries: [map[bytes_read:17 duration:0.000770158 level:info logger:http.log.access.access msg:handled request request:map[client_ip:127.0.0.1 headers:map[Connection:[Upgrade] Upgrade:[echo] User-Agent:[Go-http-client/1.1]] host:localhost:9080 method:GET proto:HTTP/1.1 remote_ip:127.0.0.1 remote_port:51994 uri:/ws] resp_headers:map[Connection:[Upgrade] Content-Type:[text/plain; charset=utf-8] Server:[Caddy] Upgrade:[echo]] size:17 status:200 ts:1.7921229226855829e+09 user_id:]]
+    caddytest.go:155: ----------- failed with config -----------
+        {
+          "admin": {
+            "listen": "localhost:2999"
+          },
+          "apps": {
+            "http": {
+              "grace_period": 1,
+              "http_port": 9080,
+              "https_port": 9443,
+              "servers": {
+                "srv0": {
+                  "listen": [
+                    ":9080"
+                  ],
+                  "logs": {
+                    "logger_names": {
+                      "localhost": [
+                        "access"
+                      ]
+                    }
+                  },
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "handle_response": [
+                                    {
+                                      "routes": [
+                                        {
+                                          "handle": [
+                                            {
+                                              "body": "swapped",
+                                              "handler": "static_response",
+                                              "status_code": 200
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ],
+                                  "handler": "intercept"
+                                },
+                                {
+                                  "handler": "reverse_proxy",
+                                  "upstreams": [
+                                    {
+                                      "dial": "127.0.0.1:41883"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "host": [
+                            "localhost"
+                          ]
+                        }
+                      ],
+                      "terminal": true
+                    }
+                  ]
+                }
+              }
+            },
+            "pki": {
+              "certificate_authorities": {
+                "local": {
+                  "install_trust": false
+                }
+              }
+            }
+          },
+          "logging": {
+            "logs": {
+              "access": {
+                "encoder": {
+                  "format": "json"
+                },
+                "include": [
+                  "http.log.access.access"
+                ],
+                "level": "DEBUG",
+                "writer": {
+                  "address": "127.0.0.1:33205",
+                  "output": "net"
+                }
+              },
+              "default": {
+                "exclude": [
+                  "http.log.access.access"
+                ]
+              }
+            }
+          }
+        }
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/caddytest/integration	16.897s
+FAIL
+

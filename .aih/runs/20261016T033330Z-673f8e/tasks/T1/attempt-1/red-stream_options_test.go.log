@@ -1,0 +1,16 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261016T033324Z/worktrees/20261016T033330Z-673f8e-red golang:1.27-bookworm go test -count=1 -timeout 30m ./modules/caddyhttp/reverseproxy
+FAIL	github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy [build failed]
+FAIL
+# github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy [github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy.test]
+modules/caddyhttp/reverseproxy/metrics_test.go:58:2: undefined: streamStarted
+modules/caddyhttp/reverseproxy/metrics_test.go:59:2: undefined: streamStarted
+modules/caddyhttp/reverseproxy/metrics_test.go:65:2: undefined: streamFinished
+modules/caddyhttp/reverseproxy/metrics_test.go:65:17: undefined: streamResultCompleted
+modules/caddyhttp/reverseproxy/metrics_test.go:66:2: undefined: streamFinished
+modules/caddyhttp/reverseproxy/metrics_test.go:66:17: undefined: streamResultTimeout
+modules/caddyhttp/reverseproxy/metrics_test.go:72:25: undefined: streamResultCompleted
+modules/caddyhttp/reverseproxy/metrics_test.go:75:25: undefined: streamResultTimeout
+modules/caddyhttp/reverseproxy/stream_options_test.go:18:15: undefined: StreamLogs
+modules/caddyhttp/reverseproxy/stream_options_test.go:28:14: undefined: StreamLogs
+modules/caddyhttp/reverseproxy/stream_options_test.go:28:14: too many errors
+
