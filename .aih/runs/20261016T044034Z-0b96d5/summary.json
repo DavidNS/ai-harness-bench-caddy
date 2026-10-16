@@ -1,0 +1,230 @@
+{
+  "attempts_total": 2,
+  "base_sha": "04fe16102872eba7c017b495a9006fddae4dbdc4",
+  "delivery": null,
+  "gate_failures": [
+    {
+      "attempt": 1,
+      "codes": [
+        "review.changes_requested"
+      ],
+      "gate": "review.approved",
+      "task": "T1"
+    },
+    {
+      "attempt": 1,
+      "codes": [
+        "tests.selected_failed"
+      ],
+      "gate": "tests.selected_green",
+      "task": "T1"
+    }
+  ],
+  "head": "e835145f2a67e39e8e84095fc0269e7bb852e456",
+  "human_decisions": [
+    {
+      "actor": "policy",
+      "decision": "approve",
+      "gate": "human.plan_approved"
+    }
+  ],
+  "models": [
+    "claude-sonnet-5-5"
+  ],
+  "plan_tasks": [
+    {
+      "files": [
+        "modules/caddyhttp/reverseproxy/reverseproxy.go",
+        "modules/caddyhttp/reverseproxy/streaming.go",
+        "modules/caddyhttp/reverseproxy/caddyfile.go",
+        "modules/caddyhttp/reverseproxy/metrics.go",
+        "modules/caddyhttp/responsewriter.go",
+        "modules/caddyhttp/server.go",
+        "modules/caddyhttp/logging.go",
+        "modules/caddyhttp/encode/encode.go",
+        "modules/caddyhttp/intercept/intercept.go",
+        "modules/caddyhttp/reverseproxy/streaming_test.go",
+        "modules/caddyhttp/reverseproxy/stream_detached_test.go",
+        "modules/caddyhttp/reverseproxy/metrics_test.go",
+        "modules/caddyhttp/hijack_test.go",
+        "caddytest/integration/stream_reload_test.go",
+        "caddytest/integration/stream_test.go",
+        "caddytest/integration/caddyfile_adapt/reverse_proxy_stream_detached.caddyfiletest"
+      ],
+      "id": "T1",
+      "key": "T1",
+      "tests": [
+        "modules/caddyhttp/reverseproxy/streaming_test.go",
+        "modules/caddyhttp/reverseproxy/stream_detached_test.go",
+        "modules/caddyhttp/reverseproxy/metrics_test.go",
+        "modules/caddyhttp/hijack_test.go",
+        "caddytest/integration/stream_reload_test.go",
+        "caddytest/integration/caddyfile_adapt/reverse_proxy_stream_detached.caddyfiletest"
+      ]
+    }
+  ],
+  "plan_version": 1,
+  "run_dir": "C:\\Users\\david\\git\\ai-harness-e2e-benchmak\\targets\\.aih\\20261016T044029Z\\runs\\20261016T044034Z-0b96d5",
+  "run_id": "20261016T044034Z-0b96d5",
+  "schema_version": 1,
+  "sessions": 8,
+  "status": "implemented",
+  "tasks": [
+    {
+      "advisories": [
+        {
+          "file": "modules/caddyhttp/reverseproxy/streaming.go",
+          "line": 153,
+          "pass": 2,
+          "severity": "advisory",
+          "text": "Detached streams to dynamic upstreams are keyed by an empty upstream string and never closed on removal, and no test covers that case or stream_timeout combined with detached; the first is documented in the field comment."
+        },
+        {
+          "file": "modules/caddyhttp/reverseproxy/streaming.go",
+          "line": 337,
+          "pass": 4,
+          "severity": "advisory",
+          "text": "StreamLogs.skipHandshake() and the nil-receiver handling are thin wrappers that could be inlined."
+        }
+      ],
+      "attempts": 2,
+      "commit": "e835145f2a67e39e8e84095fc0269e7bb852e456",
+      "coverage": [
+        {
+          "criterion": "ACC1",
+          "line": 0,
+          "note": "Echoes through two reloads and a new stream afterwards.",
+          "probe": {
+            "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+          },
+          "probe_base": "does_not_build",
+          "probe_outcome": "verified",
+          "status": "covered",
+          "test": "caddytest/integration/stream_reload_test.go::TestStreamDetachedSurvivesReload"
+        },
+        {
+          "criterion": "ACC2",
+          "line": 0,
+          "note": "Checks that the removed stream closes and the retained one keeps echoing, including after a further reload.",
+          "probe": {
+            "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+          },
+          "probe_base": "does_not_build",
+          "probe_outcome": "verified",
+          "status": "covered",
+          "test": "caddytest/integration/stream_reload_test.go::TestStreamDetachedClosesRemovedUpstream"
+        },
+        {
+          "criterion": "ACC3",
+          "line": 0,
+          "note": "Covers both the no-delay and the 3s-delay cases, and checks that the elapsed time is at least 2s.",
+          "probe": {
+            "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+          },
+          "probe_base": "does_not_build",
+          "probe_outcome": "verified",
+          "status": "covered",
+          "test": "caddytest/integration/stream_reload_test.go::TestStreamDefaultClosedOnReload"
+        },
+        {
+          "criterion": "ACC4",
+          "line": 0,
+          "note": "Counts the 101 entries in the access log for the default, level-only and skip_handshake configs.",
+          "probe": {
+            "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+          },
+          "probe_base": "does_not_build",
+          "probe_outcome": "verified",
+          "status": "covered",
+          "test": "caddytest/integration/stream_reload_test.go::TestStreamLogsSkipHandshake"
+        },
+        {
+          "criterion": "ACC5",
+          "line": 0,
+          "note": "Checks the default DEBUG level (not logged at INFO), a configured level, the logger name and the byte counts.",
+          "probe": {
+            "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+          },
+          "probe_base": "does_not_build",
+          "probe_outcome": "verified",
+          "status": "covered",
+          "test": "caddytest/integration/stream_reload_test.go::TestStreamCloseLogAccessLogger"
+        },
+        {
+          "criterion": "ACC6",
+          "line": 0,
+          "note": "The recorder is tested directly; the encode writer is only exercised in the integration test.",
+          "probe": {
+            "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+          },
+          "probe_base": "does_not_build",
+          "probe_outcome": "verified",
+          "status": "covered",
+          "test": "modules/caddyhttp/hijack_test.go::TestResponseRecorderNoWriteAfterHijack"
+        },
+        {
+          "criterion": "ACC7",
+          "line": 0,
+          "note": "Runs a plain echo upgrade and a WebSocket upgrade through encode and intercept with handle_response, and checks the access log.",
+          "probe": {
+            "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+          },
+          "probe_base": "does_not_build",
+          "probe_outcome": "verified",
+          "status": "covered",
+          "test": "caddytest/integration/stream_reload_test.go::TestUpgradeThroughEncodeAndIntercept"
+        },
+        {
+          "criterion": "ACC8",
+          "line": 0,
+          "note": "The h2 case is TestExtendedConnectH2, which runs in a child process with GODEBUG set and is skipped under -short.",
+          "probe": {
+            "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+          },
+          "probe_base": "does_not_build",
+          "probe_outcome": "verified",
+          "status": "covered",
+          "test": "caddytest/integration/stream_reload_test.go::TestStreamDetachedHTTP11Upgrade"
+        },
+        {
+          "criterion": "ACC9",
+          "line": 0,
+          "note": "Forty concurrent finish and markResult calls produce exactly one accounting, with the byte counts checked.",
+          "probe": {
+            "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+          },
+          "probe_base": "does_not_build",
+          "probe_outcome": "verified",
+          "status": "covered",
+          "test": "modules/caddyhttp/reverseproxy/metrics_test.go::TestStreamMetricsAccountedOnce"
+        },
+        {
+          "criterion": "ACC10",
+          "line": 0,
+          "note": "A table test over valid and invalid inputs, plus the adapt test.",
+          "probe": {
+            "path": "modules/caddyhttp/reverseproxy/aih_probe_stream_test.go"
+          },
+          "probe_base": "does_not_build",
+          "probe_outcome": "verified",
+          "status": "covered",
+          "test": "modules/caddyhttp/reverseproxy/stream_detached_test.go::TestStreamOptionsCaddyfile"
+        }
+      ],
+      "id": "T1",
+      "review_rounds": 1,
+      "session_id": "89fc4e4a-bb69-4bee-8038-87b5432b79de",
+      "status": "committed"
+    }
+  ],
+  "usage": {
+    "cache_creation_input_tokens": 486537.0,
+    "cache_read_input_tokens": 16947240.0,
+    "cost_usd": 5.621592,
+    "duration_ms": 1742682,
+    "input_tokens": 220.0,
+    "num_turns": 192,
+    "output_tokens": 198028.0
+  },
+  "worktree": "C:\\Users\\david\\git\\ai-harness-e2e-benchmak\\targets\\.aih\\20261016T044029Z\\worktrees\\20261016T044034Z-0b96d5"
+}
