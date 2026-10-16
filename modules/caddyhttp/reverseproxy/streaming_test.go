@@ -11,10 +11,14 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
@@ -150,6 +154,76 @@ func TestSwitchProtocolCopierErrorIsNotHalfClose(t *testing.T) {
 	if dst.called {
 		t.Fatal("CloseWrite() was called after a copy error")
 	}
+}
+
+// The bytes copied in each direction are counted when counters are given.
+func TestSwitchProtocolCopierCountsBytes(t *testing.T) {
+	var wg sync.WaitGroup
+	errc := make(chan error, 2)
+	var toBackend, fromBackend atomic.Int64
+	var toBackendData, fromBackendData bytes.Buffer
+
+	copier := switchProtocolCopier{
+		user:        nopReadWriteCloser{Reader: strings.NewReader("hello"), Writer: &fromBackendData},
+		backend:     nopReadWriteCloser{Reader: strings.NewReader("hi"), Writer: &toBackendData},
+		wg:          &wg,
+		toBackend:   &toBackend,
+		fromBackend: &fromBackend,
+	}
+
+	wg.Add(2)
+	go copier.copyToBackend(errc)
+	go copier.copyFromBackend(errc)
+	wg.Wait()
+
+	if got := toBackend.Load(); got != 5 {
+		t.Errorf("bytes to backend = %d, want 5", got)
+	}
+	if got := fromBackend.Load(); got != 2 {
+		t.Errorf("bytes from backend = %d, want 2", got)
+	}
+}
+
+// Shutting the handler down marks the streams as closed by it before closing
+// their connections, which is how they get the right result.
+func TestCloseConnectionsCallsOnClose(t *testing.T) {
+	h := &Handler{
+		logger:        zap.NewNop(),
+		connections:   make(map[io.ReadWriteCloser]openConnection),
+		connectionsMu: new(sync.Mutex),
+	}
+
+	var events []string
+	withClose := &recordingConn{onClose: func() { events = append(events, "closed") }}
+	del := h.registerConnection(withClose, nil, func() { events = append(events, "marked") })
+	withoutHook := &recordingConn{onClose: func() { events = append(events, "closed without hook") }}
+	h.registerConnection(withoutHook, nil, nil)
+
+	if err := h.closeConnections(); err != nil {
+		t.Fatalf("closeConnections() error = %v", err)
+	}
+	del()
+
+	if !withClose.closed || !withoutHook.closed {
+		t.Fatal("not all connections were closed")
+	}
+	marked := slices.Index(events, "marked")
+	closed := slices.Index(events, "closed")
+	if marked < 0 || closed < 0 || marked > closed {
+		t.Errorf("events = %v, want the connection marked before it is closed", events)
+	}
+}
+
+type recordingConn struct {
+	nopReadWriteCloser
+	closed  bool
+	onClose func()
+}
+
+func (c *recordingConn) Close() error {
+	c.closed = true
+	c.onClose()
+	return nil
 }
 
 func TestSwitchProtocolCopierDefaultBufferSize(t *testing.T) {

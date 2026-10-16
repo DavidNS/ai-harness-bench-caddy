@@ -20,10 +20,12 @@
 package encode
 
 import (
+	"bufio"
 	"cmp"
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -255,12 +257,27 @@ type responseWriter struct {
 	incremental  bool
 	isConnect    bool
 	disabled     bool // disable encoding for this response
+	hijacked     bool // the connection was taken over, nothing may be written anymore
 }
 
 // WriteHeader stores the status to write when the time comes
-// to actually write the header.
+// to actually write the header. A 101 Switching Protocols status
+// is the final response of an upgrade, so it is written right away
+// and never encoded. Nothing is written once the connection has
+// been hijacked.
 func (rw *responseWriter) WriteHeader(status int) {
+	if rw.hijacked {
+		return
+	}
 	rw.statusCode = status
+
+	if status == http.StatusSwitchingProtocols {
+		rw.disabled = true
+		rw.wroteHeader = true
+		rw.ResponseWriter.WriteHeader(status)
+		return
+	}
+
 	if status == http.StatusPartialContent {
 		rw.disabled = true // partial representations must not be dynamically re-encoded
 	}
@@ -332,6 +349,9 @@ func (enc *Encode) Match(rw *responseWriter) bool {
 // FlushError is an alternative Flush returning an error. It delays the actual Flush of the underlying
 // ResponseWriterWrapper until headers were written.
 func (rw *responseWriter) FlushError() error {
+	if rw.hijacked {
+		return http.ErrHijacked
+	}
 	if !rw.wroteHeader && rw.statusCode == 0 && caddyhttp.IsIncremental(rw.Header()) {
 		rw.WriteHeader(http.StatusOK)
 	}
@@ -365,6 +385,10 @@ func (rw *responseWriter) FlushError() error {
 // it is encoded using the encoder, which is initialized
 // if not done so already.
 func (rw *responseWriter) Write(p []byte) (int, error) {
+	if rw.hijacked {
+		return 0, http.ErrHijacked
+	}
+
 	// ignore zero data writes, probably head request
 	if len(p) == 0 {
 		return 0, nil
@@ -438,6 +462,9 @@ const sniffLen = 512
 // It's based on the standard library HTTP/1.1 response writer implementation.
 // https://github.com/golang/go/blob/f4e3ec3dbe3b8e04a058d266adf8e048bab563f2/src/net/http/server.go#L586
 func (rw *responseWriter) ReadFrom(r io.Reader) (int64, error) {
+	if rw.hijacked {
+		return 0, http.ErrHijacked
+	}
 	if rw.incremental || !rw.wroteHeader && caddyhttp.IsIncremental(rw.Header()) {
 		return io.Copy(writerOnly{rw}, r)
 	}
@@ -475,8 +502,9 @@ func (rw *responseWriter) ReadFrom(r io.Reader) (int64, error) {
 // Close writes any remaining buffered response and
 // deallocates any active resources.
 func (rw *responseWriter) Close() error {
-	// didn't write, probably head request
-	if !rw.wroteHeader {
+	// didn't write, probably head request; a hijacked
+	// connection must not be written to anymore
+	if !rw.wroteHeader && !rw.hijacked {
 		cl, err := strconv.Atoi(rw.Header().Get("Content-Length"))
 		if err == nil && cl > rw.config.MinLength {
 			rw.init()
@@ -502,6 +530,19 @@ func (rw *responseWriter) Close() error {
 // Unwrap returns the underlying ResponseWriter.
 func (rw *responseWriter) Unwrap() http.ResponseWriter {
 	return rw.ResponseWriter
+}
+
+// Hijack implements http.Hijacker by hijacking the underlying
+// ResponseWriter. Once it succeeded, rw writes nothing anymore, so
+// that closing the encoder cannot write to the taken-over connection.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	//nolint:bodyclose
+	conn, brw, err := http.NewResponseController(rw.ResponseWriter).Hijack()
+	if err != nil {
+		return nil, nil, err
+	}
+	rw.hijacked = true
+	return conn, brw, nil
 }
 
 // init should be called before we write a response, if rw.buf has contents.

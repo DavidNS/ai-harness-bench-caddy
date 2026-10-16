@@ -1,11 +1,15 @@
 package encode
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -385,6 +389,103 @@ func TestIsEncodeAllowed(t *testing.T) {
 					test.expected)
 			}
 		})
+	}
+}
+
+// hijackableWriter records what is written to it, and can be hijacked.
+type hijackableWriter struct {
+	header   http.Header
+	statuses []int
+	body     []byte
+	hijacked bool
+	conn     net.Conn
+}
+
+func (w *hijackableWriter) Header() http.Header { return w.header }
+func (w *hijackableWriter) WriteHeader(code int) {
+	w.statuses = append(w.statuses, code)
+}
+func (w *hijackableWriter) Write(p []byte) (int, error) {
+	w.body = append(w.body, p...)
+	return len(p), nil
+}
+
+func (w *hijackableWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	w.hijacked = true
+	return w.conn, bufio.NewReadWriter(bufio.NewReader(w.conn), bufio.NewWriter(w.conn)), nil
+}
+
+func newHijackableWriter() *hijackableWriter {
+	conn, _ := net.Pipe()
+	return &hijackableWriter{header: make(http.Header), conn: conn}
+}
+
+// A 101 is the final response of an upgrade: it is written once, right away,
+// and neither a later status nor closing the writer writes another one.
+func TestResponseWriterSwitchingProtocolsIsFinal(t *testing.T) {
+	w := newHijackableWriter()
+	defer w.conn.Close()
+	rw := new(Encode).openResponseWriter("gzip", w, false)
+
+	rw.WriteHeader(http.StatusSwitchingProtocols)
+	rw.WriteHeader(http.StatusOK)
+	if err := rw.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	if len(w.statuses) != 1 || w.statuses[0] != http.StatusSwitchingProtocols {
+		t.Errorf("statuses written = %v, want exactly one 101", w.statuses)
+	}
+	if rw.w != nil {
+		t.Error("a 101 response must not be encoded")
+	}
+}
+
+// Once the connection is hijacked, nothing may be written to the response.
+func TestResponseWriterHijackStopsWrites(t *testing.T) {
+	w := newHijackableWriter()
+	defer w.conn.Close()
+	rw := new(Encode).openResponseWriter("gzip", w, false)
+
+	// a status is pending when the connection is taken over
+	rw.WriteHeader(http.StatusTeapot)
+
+	conn, _, err := rw.Hijack()
+	if err != nil {
+		t.Fatalf("Hijack() error = %v", err)
+	}
+	if conn != w.conn || !w.hijacked {
+		t.Fatal("the underlying writer was not hijacked")
+	}
+
+	rw.WriteHeader(http.StatusOK)
+	if n, err := rw.Write([]byte("late")); n != 0 || !errors.Is(err, http.ErrHijacked) {
+		t.Errorf("Write() after Hijack() = %d, %v; want 0, %v", n, err, http.ErrHijacked)
+	}
+	if n, err := rw.ReadFrom(strings.NewReader("late")); n != 0 || !errors.Is(err, http.ErrHijacked) {
+		t.Errorf("ReadFrom() after Hijack() = %d, %v; want 0, %v", n, err, http.ErrHijacked)
+	}
+	if err := rw.FlushError(); !errors.Is(err, http.ErrHijacked) {
+		t.Errorf("FlushError() after Hijack() = %v, want %v", err, http.ErrHijacked)
+	}
+	if err := rw.Close(); err != nil {
+		t.Errorf("Close() error = %v", err)
+	}
+	if len(w.statuses) != 0 || len(w.body) != 0 {
+		t.Errorf("the hijacked writer was written to: statuses %v, body %q", w.statuses, w.body)
+	}
+}
+
+func TestResponseWriterHijackNotSupported(t *testing.T) {
+	// a writer that cannot be hijacked
+	w := &discardResponseWriter{header: make(http.Header)}
+	rw := new(Encode).openResponseWriter("gzip", w, false)
+
+	if _, _, err := rw.Hijack(); err == nil {
+		t.Fatal("Hijack() on a writer that is not a Hijacker succeeded")
+	}
+	if n, err := rw.Write([]byte("body")); n != 4 || err != nil {
+		t.Errorf("Write() after failed Hijack() = %d, %v; want 4, nil", n, err)
 	}
 }
 

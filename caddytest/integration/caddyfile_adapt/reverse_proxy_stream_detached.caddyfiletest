@@ -1,0 +1,62 @@
+https://example.com {
+	reverse_proxy localhost:54321 {
+		stream_detached
+		stream_logs {
+			skip_handshake
+			level info
+			logger_name access
+		}
+	}
+}
+
+----------
+{
+	"apps": {
+		"http": {
+			"servers": {
+				"srv0": {
+					"listen": [
+						":443"
+					],
+					"routes": [
+						{
+							"match": [
+								{
+									"host": [
+										"example.com"
+									]
+								}
+							],
+							"handle": [
+								{
+									"handler": "subroute",
+									"routes": [
+										{
+											"handle": [
+												{
+													"handler": "reverse_proxy",
+													"stream_detached": true,
+													"stream_logs": {
+														"level": "info",
+														"logger_name": "access",
+														"skip_handshake": true
+													},
+													"upstreams": [
+														{
+															"dial": "localhost:54321"
+														}
+													]
+												}
+											]
+										}
+									]
+								}
+							],
+							"terminal": true
+						}
+					]
+				}
+			}
+		}
+	}
+}
