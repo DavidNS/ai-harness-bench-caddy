@@ -1,0 +1,294 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=1 -w /targets/.aih/20261016T044029Z/worktrees/20261016T044034Z-0b96d5 golang:1.27-bookworm go test -count=1 -timeout 30m -race -run=TestStream|TestUpgradeThrough ./caddytest/integration
+"remote_ip":"127.0.0.1","remote_port":"40554","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792126625.6247253,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"40554","headers":{"User-Agent":["Go-http-client/1.1"],"Content-Length":["652"],"Content-Type":["application/json"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792126625.6351788,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//localhost:2999","//[::1]:2999","//127.0.0.1:2999"]}
+{"level":"info","ts":1792126625.6361217,"logger":"http.auto_https","msg":"automatic HTTPS is completely disabled for server","server_name":"srv0"}
+{"level":"warn","ts":1792126625.6370764,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792126625.637162,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792126625.6372006,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1792126625.6373625,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"info","ts":1792126625.6383624,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792126625.638467,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792126625.6390338,"msg":"caddytest: config load time took 14.701992ms"}
+{"level":"info","ts":1792126625.640046,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792126625.6420023,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"40570","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792126625.698899,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"40570","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+--- FAIL: TestStreamCloseLogAccessLogger (0.24s)
+    --- FAIL: TestStreamCloseLogAccessLogger/default_level (0.09s)
+        caddytest.go:162: Before: {"admin":{"listen":"localhost:2999"},"apps":{"http":{"grace_period":1,"http_port":9080,"https_port":9443,"servers":{"srv0":{"automatic_https":{"disable":true},"listen":[":9080"],"logs":{"default_logger_name":"access"},"routes":[{"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"localhost:54321"}]}],"match":[{"path":["/a/*"]}]}]}}}},"logging":{"logs":{"access":{"encoder":{"format":"json"},"include":["http.log.access.access"],"level":"DEBUG","writer":{"filename":"/tmp/TestStreamCloseLogAccessLoggerdefault_level3338277392/001/access.log","output":"file"}},"default":{"exclude":["http.log.access.access"]}}}}
+        caddytest.go:172: After: {"admin":{"listen":"localhost:2999"},"apps":{"http":{"grace_period":1,"http_port":9080,"https_port":9443,"servers":{"srv0":{"automatic_https":{"disable":true},"listen":[":9080"],"logs":{"default_logger_name":"access"},"routes":[{"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"localhost:54321"}]}],"match":[{"path":["/a/*"]}]}]}}}},"logging":{"logs":{"access":{"encoder":{"format":"json"},"include":["http.log.access.access"],"level":"DEBUG","writer":{"filename":"/tmp/TestStreamCloseLogAccessLoggerdefault_level3338277392/001/access.log","output":"file"}},"default":{"exclude":["http.log.access.access"]}}}}
+        stream_reload_test.go:518: result = error, want closed
+        caddytest.go:155: ----------- failed with config -----------
+            {
+              "admin": {
+                "listen": "localhost:2999"
+              },
+              "apps": {
+                "http": {
+                  "grace_period": 1,
+                  "http_port": 9080,
+                  "https_port": 9443,
+                  "servers": {
+                    "srv0": {
+                      "automatic_https": {
+                        "disable": true
+                      },
+                      "listen": [
+                        ":9080"
+                      ],
+                      "logs": {
+                        "default_logger_name": "access"
+                      },
+                      "routes": [
+                        {
+                          "handle": [
+                            {
+                              "handler": "reverse_proxy",
+                              "upstreams": [
+                                {
+                                  "dial": "localhost:54321"
+                                }
+                              ]
+                            }
+                          ],
+                          "match": [
+                            {
+                              "path": [
+                                "/a/*"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "logging": {
+                "logs": {
+                  "access": {
+                    "encoder": {
+                      "format": "json"
+                    },
+                    "include": [
+                      "http.log.access.access"
+                    ],
+                    "level": "DEBUG",
+                    "writer": {
+                      "filename": "/tmp/TestStreamCloseLogAccessLoggerdefault_level3338277392/001/access.log",
+                      "output": "file"
+                    }
+                  },
+                  "default": {
+                    "exclude": [
+                      "http.log.access.access"
+                    ]
+                  }
+                }
+              }
+            }
+    --- FAIL: TestStreamCloseLogAccessLogger/configured_level (0.09s)
+        caddytest.go:162: Before: {"admin":{"listen":"localhost:2999"},"apps":{"http":{"grace_period":1,"http_port":9080,"https_port":9443,"servers":{"srv0":{"automatic_https":{"disable":true},"listen":[":9080"],"logs":{"default_logger_name":"access"},"routes":[{"handle":[{"handler":"reverse_proxy","stream_logs":{"level":"info"},"upstreams":[{"dial":"localhost:54321"}]}],"match":[{"path":["/a/*"]}]}]}}}},"logging":{"logs":{"access":{"encoder":{"format":"json"},"include":["http.log.access.access"],"level":"INFO","writer":{"filename":"/tmp/TestStreamCloseLogAccessLoggerconfigured_level3824040427/001/access.log","output":"file"}},"default":{"exclude":["http.log.access.access"]}}}}
+        caddytest.go:172: After: {"admin":{"listen":"localhost:2999"},"apps":{"http":{"grace_period":1,"http_port":9080,"https_port":9443,"servers":{"srv0":{"automatic_https":{"disable":true},"listen":[":9080"],"logs":{"default_logger_name":"access"},"routes":[{"handle":[{"handler":"reverse_proxy","stream_logs":{"level":"info"},"upstreams":[{"dial":"localhost:54321"}]}],"match":[{"path":["/a/*"]}]}]}}}},"logging":{"logs":{"access":{"encoder":{"format":"json"},"include":["http.log.access.access"],"level":"INFO","writer":{"filename":"/tmp/TestStreamCloseLogAccessLoggerconfigured_level3824040427/001/access.log","output":"file"}},"default":{"exclude":["http.log.access.access"]}}}}
+        stream_reload_test.go:518: result = error, want closed
+        caddytest.go:155: ----------- failed with config -----------
+            {
+              "admin": {
+                "listen": "localhost:2999"
+              },
+              "apps": {
+                "http": {
+                  "grace_period": 1,
+                  "http_port": 9080,
+                  "https_port": 9443,
+                  "servers": {
+                    "srv0": {
+                      "automatic_https": {
+                        "disable": true
+                      },
+                      "listen": [
+                        ":9080"
+                      ],
+                      "logs": {
+                        "default_logger_name": "access"
+                      },
+                      "routes": [
+                        {
+                          "handle": [
+                            {
+                              "handler": "reverse_proxy",
+                              "stream_logs": {
+                                "level": "info"
+                              },
+                              "upstreams": [
+                                {
+                                  "dial": "localhost:54321"
+                                }
+                              ]
+                            }
+                          ],
+                          "match": [
+                            {
+                              "path": [
+                                "/a/*"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "logging": {
+                "logs": {
+                  "access": {
+                    "encoder": {
+                      "format": "json"
+                    },
+                    "include": [
+                      "http.log.access.access"
+                    ],
+                    "level": "INFO",
+                    "writer": {
+                      "filename": "/tmp/TestStreamCloseLogAccessLoggerconfigured_level3824040427/001/access.log",
+                      "output": "file"
+                    }
+                  },
+                  "default": {
+                    "exclude": [
+                      "http.log.access.access"
+                    ]
+                  }
+                }
+              }
+            }
+{"level":"info","ts":1792126625.7038684,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"40570","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792126625.7048373,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"40570","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792126625.7064261,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"40570","headers":{"User-Agent":["Go-http-client/1.1"],"Content-Length":["335"],"Content-Type":["application/json"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792126625.711034,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//localhost:2999","//[::1]:2999","//127.0.0.1:2999"]}
+{"level":"info","ts":1792126625.7116303,"logger":"http.auto_https","msg":"automatic HTTPS is completely disabled for server","server_name":"srv0"}
+{"level":"info","ts":1792126625.7120261,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"error","ts":1792126625.7129014,"logger":"admin.api","msg":"request error","error":"loading config: loading new config: loading http app module: provision http: server srv0: setting up route handlers: route 0: loading handler modules: position 0: loading module 'reverse_proxy': provision http.handlers.reverse_proxy: stream_logs: invalid level \"bogus\": unrecognized level: \"bogus\"","status_code":400}
+{"level":"info","ts":1792126625.7134066,"msg":"caddytest: config load time took 7.384702ms"}
+{"level":"info","ts":1792126625.7146308,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792126625.7190106,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"40578","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792126625.7196555,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"40578","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}}
+{"level":"info","ts":1792126625.7208114,"logger":"admin.api","msg":"received request","method":"POST","host":"localhost:2999","uri":"/load","remote_ip":"127.0.0.1","remote_port":"40578","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"],"Content-Length":["810"],"Content-Type":["application/json"]}}
+{"level":"info","ts":1792126625.724199,"logger":"admin","msg":"admin endpoint started","address":"localhost:2999","enforce_origin":false,"origins":["//localhost:2999","//[::1]:2999","//127.0.0.1:2999"]}
+{"level":"info","ts":1792126625.7250237,"logger":"http.auto_https","msg":"automatic HTTPS is completely disabled for server","server_name":"srv0"}
+{"level":"warn","ts":1792126625.72654,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"warn","ts":1792126625.7265816,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":9080"}
+{"level":"info","ts":1792126625.7265968,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1792126625.7266452,"logger":"http","msg":"servers shutting down; grace period initiated","duration":0.000000001}
+{"level":"info","ts":1792126625.7269802,"msg":"autosaved config (load with --resume flag)","file":"/root/.config/caddy/autosave.json"}
+{"level":"info","ts":1792126625.7270281,"logger":"admin.api","msg":"load complete"}
+{"level":"info","ts":1792126625.727233,"msg":"caddytest: config load time took 6.682096ms"}
+{"level":"info","ts":1792126625.7280674,"logger":"admin","msg":"stopped previous server","address":"localhost:2999"}
+{"level":"info","ts":1792126625.7284122,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"40594","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"]}}
+{"level":"info","ts":1792126625.7295234,"msg":"caddytest: redirecting the dialer from localhost:9080 to 127.0.0.1:9080"}
+{"level":"error","ts":1792126625.7311463,"logger":"http.log.error.access","msg":"http: wrote more than the declared Content-Length","request":{"remote_ip":"127.0.0.1","remote_port":"36616","client_ip":"127.0.0.1","proto":"HTTP/1.1","method":"GET","host":"localhost:9080","uri":"/a/plain","headers":{"User-Agent":["Go-http-client/1.1"],"Accept-Encoding":["gzip"]}},"duration":0.001202779,"error":"http: wrote more than the declared Content-Length"}
+{"level":"info","ts":1792126625.7317314,"logger":"admin.api","msg":"received request","method":"GET","host":"localhost:2999","uri":"/config/","remote_ip":"127.0.0.1","remote_port":"40594","headers":{"Accept-Encoding":["gzip"],"User-Agent":["Go-http-client/1.1"]}}
+--- FAIL: TestUpgradeThroughEncodeAndIntercept (0.02s)
+    caddytest.go:162: Before: {"admin":{"listen":"localhost:2999"},"apps":{"http":{"grace_period":1,"http_port":9080,"https_port":9443,"servers":{"srv0":{"automatic_https":{"disable":true},"listen":[":9080"],"logs":{"default_logger_name":"access"},"routes":[{"handle":[{"encodings":{"gzip":{}},"handler":"encode"},{"handle_response":[{"routes":[{"handle":[{"body":"intercepted","handler":"static_response"}]}]}],"handler":"intercept"},{"handler":"reverse_proxy","stream_logs":{"level":"debug"},"upstreams":[{"dial":"localhost:54321"}]}],"match":[{"path":["/a/*"]}]}]}}}},"logging":{"logs":{"access":{"encoder":{"format":"json"},"include":["http.log.access.access"],"level":"DEBUG","writer":{"filename":"/tmp/TestUpgradeThroughEncodeAndIntercept3970620651/001/access.log","output":"file"}},"default":{"exclude":["http.log.access.access"]}}}}
+    caddytest.go:172: After: {"admin":{"listen":"localhost:2999"},"apps":{"http":{"grace_period":1,"http_port":9080,"https_port":9443,"servers":{"srv0":{"automatic_https":{"disable":true},"listen":[":9080"],"logs":{"default_logger_name":"access"},"routes":[{"handle":[{"encodings":{"gzip":{}},"handler":"encode"},{"handle_response":[{"routes":[{"handle":[{"body":"intercepted","handler":"static_response"}]}]}],"handler":"intercept"},{"handler":"reverse_proxy","stream_logs":{"level":"debug"},"upstreams":[{"dial":"localhost:54321"}]}],"match":[{"path":["/a/*"]}]}]}}}},"logging":{"logs":{"access":{"encoder":{"format":"json"},"include":["http.log.access.access"],"level":"DEBUG","writer":{"filename":"/tmp/TestUpgradeThroughEncodeAndIntercept3970620651/001/access.log","output":"file"}},"default":{"exclude":["http.log.access.access"]}}}}
+    stream_reload_test.go:563: unable to read the response body unexpected EOF
+    caddytest.go:155: ----------- failed with config -----------
+        {
+          "admin": {
+            "listen": "localhost:2999"
+          },
+          "apps": {
+            "http": {
+              "grace_period": 1,
+              "http_port": 9080,
+              "https_port": 9443,
+              "servers": {
+                "srv0": {
+                  "automatic_https": {
+                    "disable": true
+                  },
+                  "listen": [
+                    ":9080"
+                  ],
+                  "logs": {
+                    "default_logger_name": "access"
+                  },
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "encodings": {
+                            "gzip": {}
+                          },
+                          "handler": "encode"
+                        },
+                        {
+                          "handle_response": [
+                            {
+                              "routes": [
+                                {
+                                  "handle": [
+                                    {
+                                      "body": "intercepted",
+                                      "handler": "static_response"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ],
+                          "handler": "intercept"
+                        },
+                        {
+                          "handler": "reverse_proxy",
+                          "stream_logs": {
+                            "level": "debug"
+                          },
+                          "upstreams": [
+                            {
+                              "dial": "localhost:54321"
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path": [
+                            "/a/*"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "logging": {
+            "logs": {
+              "access": {
+                "encoder": {
+                  "format": "json"
+                },
+                "include": [
+                  "http.log.access.access"
+                ],
+                "level": "DEBUG",
+                "writer": {
+                  "filename": "/tmp/TestUpgradeThroughEncodeAndIntercept3970620651/001/access.log",
+                  "output": "file"
+                }
+              },
+              "default": {
+                "exclude": [
+                  "http.log.access.access"
+                ]
+              }
+            }
+          }
+        }
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/caddytest/integration	5.246s
+FAIL
+

@@ -1,0 +1,58 @@
+{
+  "criteria_notes": [
+    {
+      "criterion": "ACC1",
+      "note": "TestStreamDetachedSurvivesReload (integration) reloads twice, keeping the upstream, and the stream keeps echoing. Unit: TestHandlerDetachedStream."
+    },
+    {
+      "criterion": "ACC2",
+      "note": "TestStreamDetachedClosesRemovedUpstream (integration) closes the removed upstream's stream and leaves the retained one echoing. Unit: TestHandlerDetachedStreamsPerUpstream and TestHandlerCleanupClosesDetachedStreamsOfRemovedUpstream."
+    },
+    {
+      "criterion": "ACC3",
+      "note": "TestStreamDefaultClosedOnReload (integration), with no delay and with a 3s delay. Unit: TestHandlerDefaultStreamClosedOnCleanup and TestHandlerDefaultStreamClosedAfterDelay."
+    },
+    {
+      "criterion": "ACC4",
+      "note": "TestStreamLogsSkipHandshake (integration) checks the 101 entry in the access log file. Unit: TestHandlerStreamLogsSkipHandshake."
+    },
+    {
+      "criterion": "ACC5",
+      "note": "TestStreamCloseLogAccessLogger (integration) checks that the entry arrives on logger http.log.access.access at the default DEBUG and at a configured level, and is dropped when the access logger level is higher. The unit test TestServerAccessLoggers covers the logger-name routing."
+    },
+    {
+      "criterion": "ACC6",
+      "note": "TestResponseRecorderNoWriteAfterHijack in `hijack_test.go` uses a real server and client. It checks that after Hijack, WriteHeader, Write, ReadFrom, Flush and WriteResponse are ignored or return ErrHijacked, and the client sees exactly one 101 followed only by raw bytes. TestResponseRecorderSwitchingProtocolsIsFinal, TestResponseRecorderHijackFailure and TestHijackedResponseWriter cover the rest. The `encode` side is exercised by TestUpgradeThroughEncodeAndIntercept."
+    },
+    {
+      "criterion": "ACC7",
+      "note": "TestUpgradeThroughEncodeAndIntercept sends a plain-echo upgrade and a WebSocket-style upgrade through `encode` and a match-all `intercept` handle_response with access logging. It checks the echo, no stray bytes, no Content-Encoding on the 101, and 2 handshake entries logged as status 101."
+    },
+    {
+      "criterion": "ACC8",
+      "note": "TestExtendedConnectH2 does a real h2 extended CONNECT end to end and checks that the server announces SETTINGS_ENABLE_CONNECT_PROTOCOL. TestStreamDetachedHTTP11Upgrade covers HTTP/1.1 upgrades in detached mode, both WebSocket and non-WebSocket."
+    },
+    {
+      "criterion": "ACC9",
+      "note": "TestStreamMetricsAccountedOnce: 40 concurrent finish/markResult calls leave exactly one accounted stream, active back to 0, one duration observation and the right byte counts. Also TestUpgradedStreamResult, TestStreamMetricsRegister, and the handler-level checks of closed-by-result and bytes."
+    },
+    {
+      "criterion": "ACC10",
+      "note": "The reverse_proxy_stream_detached.caddyfiletest adapt test passes. TestStreamOptionsCaddyfile covers valid forms (including a repeated block) and the invalid ones: extra args, missing or bad level, unknown subdirective. TestStreamLogsOptions and the integration TestStreamLogsInvalidLevel cover level parsing and rejection at load."
+    },
+    {
+      "criterion": "ACC11",
+      "note": "The `StreamDetached` and `StreamLogs` struct doc comments, the `StreamLogs` field comments (`skip_handshake`, `level`), and the UnmarshalCaddyfile syntax comment in `caddyfile.go`."
+    },
+    {
+      "criterion": "ACC12",
+      "note": "`caddytest/integration/stream_reload_test.go` runs a real Caddy and real clients for: reload survival, removed-upstream close, default close with and without delay, extended CONNECT over h2, upgrades through `encode` and `intercept`, detached streams with access logging, the skip_handshake and close-log scenarios, and an invalid level."
+    },
+    {
+      "criterion": "ACC13",
+      "note": "reverseproxy: `stream_detached_test.go` (registry, caddyfile, handler-level streams, copier byte counting) and `metrics_test.go`. caddyhttp: `hijack_test.go` (recorder and hijack guard, AccessLoggers). There is no unit test in the `encode` package, since `encode_test.go` is not in this task's file list."
+    }
+  ],
+  "replan_request": null,
+  "summary": "Added opt-in `stream_detached` and `stream_logs {skip_handshake, level}` to `reverse_proxy` (JSON and Caddyfile), plus the hijack-safety guards, per-upstream stream tracking, stream metrics and close logs. The listed test files, the encode conformance tests and the full `caddytest/integration` package pass under `-race`. I ran `aih check` on the touched `intercept` package's test file only through the combined run, and did not run `golangci-lint` or `gofmt`.\n\n- **Hijack safety:** `HijackResponse` in `responsewriter.go` swaps in a writer that drops headers and fails body writes and flushes with `http.ErrHijacked`. The recorder and the `encode` writer use it, and a 101 is now final and never buffered. `Server.AccessLoggers` lets the proxy write to the request's access loggers. `intercept.go` needed no change, because the recorder now streams a 101.\n- **Detached streams:** a detached stream is tracked per upstream in a global registry instead of the handler's connection map. `Handler.Cleanup` closes an upstream's streams only when `hosts.Delete` drops its last reference. The default close path (`closeConnections`, `cleanupConnections`, `stream_close_delay`) is unchanged.\n- **Metrics and logs:** `caddy_reverse_proxy_streams_active`, `streams_closed_total{result}`, `stream_duration_seconds` and `stream_bytes_total{direction}`. Each stream is accounted once through a `sync.Once`, and an outside close such as a reload or upstream removal sets the result. A clean half-close with no write half to close is recorded as `closed`, not `error`.\n\nThings to know:\n- Detached streams to dynamic upstreams are not tracked per upstream; they only end on their own (documented on the field).\n- The Go h2 server only advertises extended CONNECT when `GODEBUG=http2xconnect=1` is set at process start, and the x/net h2 client rejects `:protocol`. So `TestExtendedConnectH2` re-runs itself in a child process with that variable set, on admin port 2998 and port 9444, and writes the h2 frames by hand. It uses `os.Executable()` because `caddytest` overwrites `os.Args`.\n- With access logging on, the hijacked-connection wrapper has no `CloseWrite`, so a client-side half-close behaves as before and is only now recorded as `closed`. I left that wrapper alone as unrelated.\n- The `encode` writer's `Hijack` method has no branch of its own and is covered only by the integration test, since `encode_test.go` is not in this task's file list."
+}

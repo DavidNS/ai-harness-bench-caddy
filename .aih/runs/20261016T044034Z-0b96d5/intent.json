@@ -1,0 +1,67 @@
+{
+  "constraints": [
+    "Default behaviour stays as today: upgraded streams are closed on reload, honouring the existing close-delay.",
+    "The existing test suites must stay green.",
+    "Do not change unrelated behaviour."
+  ],
+  "intents": [
+    {
+      "id": "INTENT1",
+      "key": "stream-detached",
+      "text": "Add an opt-in `stream_detached` setting on `reverse_proxy` so upgraded streams detach from the config lifecycle and survive a reload, and on reload only streams whose upstream was removed from the new config are closed."
+    },
+    {
+      "id": "INTENT2",
+      "key": "default-close-on-reload",
+      "text": "With `stream_detached` unset, upgraded streams are still closed on reload and the existing `stream_close_delay` behaviour is unchanged."
+    },
+    {
+      "id": "INTENT3",
+      "key": "stream-logs",
+      "text": "Add a `stream_logs` block with a `skip_handshake` option (default false, so the handshake is logged) that suppresses access logging of the upgrade handshake."
+    },
+    {
+      "id": "INTENT4",
+      "key": "stream-close-logs",
+      "text": "Stream close logs are available in the access log via `logger_name access`, with a configurable log level that defaults to DEBUG."
+    },
+    {
+      "id": "INTENT5",
+      "key": "hijack-safety",
+      "text": "After a connection is hijacked nothing writes to the response again, a 101 is the final response for an upgrade, and the proxy copies bytes on the raw connection rather than through the recording response writer."
+    },
+    {
+      "id": "INTENT6",
+      "key": "handler-compat",
+      "text": "Upgraded streams keep working through the other handlers of a route: `encode`, `intercept` with `handle_response`, and access logging."
+    },
+    {
+      "id": "INTENT7",
+      "key": "protocol-compat",
+      "text": "HTTP/2 extended CONNECT (RFC 8441) upgrades keep working, as do HTTP/1.1 upgrades in detached mode."
+    },
+    {
+      "id": "INTENT8",
+      "key": "stream-metrics",
+      "text": "Add `reverse_proxy` metrics for active streams, streams closed by result, stream duration, and bytes to and from the backend, with each stream accounted exactly once."
+    },
+    {
+      "id": "INTENT9",
+      "key": "config-surface-docs",
+      "text": "Expose the new options in both Caddyfile and JSON config and document them."
+    },
+    {
+      "id": "INTENT10",
+      "key": "integration-tests",
+      "text": "Add integration tests in `caddytest/integration` using a real server and real clients, covering streams surviving and being closed across reloads in each mode, extended CONNECT over h2, upgrades through `encode` and `intercept`, and detached streams with access logging."
+    },
+    {
+      "id": "INTENT11",
+      "key": "unit-tests",
+      "text": "Add unit tests for the pieces that are changed."
+    }
+  ],
+  "request": "Harden upgraded-stream handling in `reverse_proxy` across config reloads (caddyserver/caddy\nPR #7649 scope).\n\nLong-lived upgraded connections through the reverse proxy (WebSocket and other `Upgrade`\ntunnels, HTTP/2 extended CONNECT) keep the whole handler and config alive across reloads, so a\nserver that reloads often holds on to old configs, and the current behaviour on reload (close every\nupgraded stream, optionally after a delay) is the only option. Middleware and response writers also\nmisbehave once a connection has been hijacked, and operators cannot see what their streams are\ndoing.\n\nRequired behaviour:\n\n- A new opt-in `reverse_proxy` setting, `stream_detached`: when set, upgraded streams are detached\n  from the config lifecycle and survive a reload; on reload only the streams whose upstream was\n  removed from the new config are closed. The default stays as today: upgraded streams are closed on\n  reload, honouring the existing close-delay behaviour.\n- A `stream_logs` block with a `skip_handshake` option to suppress access logging of the upgrade\n  handshake (default: logged), with stream close logs available in the access log via\n  `logger_name access`, and a configurable log level (default DEBUG).\n- Upgraded streams must keep working through the other handlers of a route: `encode`, `intercept`\n  with `handle_response`, access logging. Once a connection is hijacked, nothing may write to the\n  response again; a 101 is the final response for an upgrade; the proxy copies bytes on the raw\n  connection, not through the recording response writer.\n- HTTP/2 extended CONNECT (RFC 8441) upgrades keep working, as do HTTP/1.1 upgrades in detached\n  mode.\n- Stream observability metrics in `reverse_proxy`: active streams, streams closed by result,\n  stream duration, bytes to and from the backend, each stream accounted exactly once.\n- Caddyfile and JSON config both expose the new options; document them.\n\nAdd integration tests in `caddytest/integration` that run a real server and real clients: streams\nsurviving and being closed across reloads in each mode, extended CONNECT over h2, upgrades through\n`encode` and `intercept`, detached streams with access logging. Add unit tests for the pieces you\nchange. The existing suites must stay green. Do not change unrelated behaviour.",
+  "rounds": [],
+  "summary": ""
+}

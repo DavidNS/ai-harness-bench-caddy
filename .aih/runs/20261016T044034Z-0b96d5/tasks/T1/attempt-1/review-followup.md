@@ -1,0 +1,14 @@
+Your review is incomplete.
+
+These behaviour criteria have no probe that counts: a probe that runs zero tests does not count (check the output names your test), and neither does one that passes without the change (the harness runs every passing probe on the base commit too; a test that asserts nothing, or only what already held, proves nothing about this change). For each one, write a NEW `aih_probe*` test that asserts the criterion from the outside and would fail if the change were reverted, run it with `aih check --probe <file> --run <its test names>`, fix it until it runs, and put it as `probe` (path named like a test file in a directory of the task's test files, full content) in that criterion's coverage entry. If a probe fails, that is a blocking finding with the probe as `proof`.
+- ACC1: With stream_detached set, an upgraded stream stays open and keeps echoing after a config reload that keeps its upstream. Test: TestStreamDetachedSurvivesReload. (no probe test was given)
+- ACC3: With stream_detached unset, a reload closes the upgraded stream, honouring stream_close_delay (immediately when 0, after the delay otherwise). Test: TestStreamDefaultClosedOnReload. (no probe test was given)
+- ACC4: stream_logs skip_handshake suppresses the access log entry for the upgrade handshake; the default logs it. Test: TestStreamLogsSkipHandshake. (no probe test was given)
+- ACC5: A stream close entry appears under logger_name access at the configured level, DEBUG by default. Test: TestStreamCloseLogAccessLogger. (no probe test was given)
+- ACC6: After Hijack, the response recorder and encode writers ignore WriteHeader, Write and Flush; the 101 is written once to the raw conn; proxy copying uses the raw conn. Test: TestResponseRecorderNoWriteAfterHijack. (no probe test was given)
+- ACC7: WebSocket-style upgrades succeed and echo through encode, and through intercept with handle_response, with access logging enabled. Test: TestUpgradeThroughEncodeAndIntercept. (no probe test was given)
+- ACC8: An h2 extended CONNECT stream works end to end, and an HTTP/1.1 upgrade works in detached mode. Test: TestExtendedConnectH2 and TestStreamDetachedHTTP11Upgrade. (no probe test was given)
+- ACC9: Metrics record active streams, closed-by-result, duration and bytes to/from the backend, each stream counted exactly once even with concurrent close paths. Test: TestStreamMetricsAccountedOnce. (no probe test was given)
+- ACC10: The Caddyfile parses stream_detached and stream_logs { skip_handshake; level } into the expected JSON; invalid input errors. Test: the reverse_proxy_stream_detached.caddyfiletest adapt test and TestStreamOptionsCaddyfile. (no probe test was given)
+
+Then return the whole review JSON again, with every entry.

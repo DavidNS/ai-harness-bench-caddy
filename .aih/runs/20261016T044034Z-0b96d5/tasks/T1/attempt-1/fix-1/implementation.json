@@ -1,0 +1,10 @@
+{
+  "criteria_notes": [
+    {
+      "criterion": "ACC2",
+      "note": "TestStreamDetachedClosesRemovedUpstream (stream_reload_test.go) establishes a stream on each of two upstreams in detached mode, then reloads without upstream A. A's stream is closed by the server, and a write after the close gets no data back. B's stream keeps echoing right after the reload and after a second reload that keeps B. The unit tests TestHandlerCleanupClosesDetachedStreamsOfRemovedUpstream and TestHandlerDetachedStreamsPerUpstream cover the same mechanism (the last reference to an upstream is dropped, and only that upstream's streams are closed)."
+    }
+  ],
+  "replan_request": null,
+  "summary": "ACC2 already had an integration test, TestStreamDetachedClosesRemovedUpstream. I strengthened it and it passes under -race. Only the test changed; no production code was touched. I did not re-run the rest of the task's tests after this edit."
+}

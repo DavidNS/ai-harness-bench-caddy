@@ -20,10 +20,12 @@
 package encode
 
 import (
+	"bufio"
 	"cmp"
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -289,8 +291,10 @@ func (rw *responseWriter) WriteHeader(status int) {
 
 	// write status immediately when status code is informational
 	// see: https://caddy.community/t/disappear-103-early-hints-response-with-encode-enable-caddy-v2-7-6/23081/5
+	// a 101 is the final response of an upgrade, nothing else is written after it
 	if 100 <= status && status <= 199 {
 		rw.ResponseWriter.WriteHeader(status)
+		rw.wroteHeader = rw.wroteHeader || status == http.StatusSwitchingProtocols
 	}
 
 	// write header immediately for server-sent events responses and for
@@ -497,6 +501,15 @@ func (rw *responseWriter) Close() error {
 		rw.w = nil
 	}
 	return err
+}
+
+// Hijack hijacks the underlying connection. Afterwards, the response
+// writer underneath drops everything written to it, so neither the
+// encoder nor Close can write to the hijacked connection.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	conn, brw, guarded, err := caddyhttp.HijackResponse(rw.ResponseWriter)
+	rw.ResponseWriter = guarded
+	return conn, brw, err
 }
 
 // Unwrap returns the underlying ResponseWriter.
