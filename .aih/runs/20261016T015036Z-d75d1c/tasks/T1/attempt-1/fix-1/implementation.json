@@ -1,0 +1,54 @@
+{
+  "criteria_notes": [
+    {
+      "criterion": "ACC1",
+      "note": "caddytest/integration/stream_reload_test.go::TestStreamDetachedReload; modules/caddyhttp/reverseproxy/detached_test.go::TestDetachedStreamSurvivesReload and ::TestDetachedStreamClosedWhenUpstreamRemoved."
+    },
+    {
+      "criterion": "ACC2",
+      "note": "modules/caddyhttp/reverseproxy/caddyfile_test.go::TestStreamOptionsCaddyfile and ::TestStreamOptionsJSON; caddytest/integration/caddyfile_adapt/reverse_proxy_stream_detached.caddyfiletest."
+    },
+    {
+      "criterion": "ACC3",
+      "note": "caddytest/integration/stream_reload_test.go::TestStreamDefaultClosedOnReload and ::TestStreamCloseDelayReload; modules/caddyhttp/reverseproxy/detached_test.go::TestAttachedStreamClosedOnCleanup and ::TestAttachedStreamCloseDelay."
+    },
+    {
+      "criterion": "ACC4",
+      "note": "modules/caddyhttp/reverseproxy/caddyfile_test.go::TestStreamOptionsCaddyfile and ::TestStreamOptionsJSON; modules/caddyhttp/reverseproxy/detached_test.go::TestProvisionStreamLogs and ::TestStreamSkipHandshake; caddytest/integration/stream_reload_test.go::TestStreamDetachedAccessLog."
+    },
+    {
+      "criterion": "ACC5",
+      "note": "caddytest/integration/stream_reload_test.go::TestStreamDetachedAccessLog; modules/caddyhttp/reverseproxy/detached_test.go::TestStreamCloseLog; modules/caddyhttp/reverseproxy/metrics_test.go::TestStreamStatsCloseLog."
+    },
+    {
+      "criterion": "ACC6",
+      "note": "caddytest/integration/stream_reload_test.go::TestStreamThroughEncode; caddytest/integration/intercept_test.go::TestInterceptUpgrade; modules/caddyhttp/responsewriter_test.go::TestResponseRecorderHijackStopsWrites and ::TestResponseRecorderSwitchingProtocolsIsFinal; modules/caddyhttp/encode/encode_test.go::TestResponseWriterSwitchingProtocolsIsFinal and ::TestResponseWriterHijackStopsWrites."
+    },
+    {
+      "criterion": "ACC7",
+      "note": "modules/caddyhttp/responsewriter_test.go::TestResponseRecorderSizeIgnoresRawConn and ::TestUnwrapHijackedConn; modules/caddyhttp/reverseproxy/detached_test.go::TestStreamBypassesResponseRecorder."
+    },
+    {
+      "criterion": "ACC8",
+      "note": "caddytest/integration/stream_test.go::TestH2ExtendedConnectWebSocket (runs in a child process with GODEBUG=http2xconnect=1); caddytest/integration/stream_reload_test.go::TestStreamDetachedReload covers the HTTP/1.1 upgrade in detached mode."
+    },
+    {
+      "criterion": "ACC9",
+      "note": "modules/caddyhttp/reverseproxy/metrics_test.go::TestStreamStatsMetrics (active gauge, closed-by-result counter, duration histogram, bytes to and from backend; first result wins; double finish counts once); ::TestStreamStatsDefaultResult; ::TestInitReverseProxyMetricsRegistersStreamMetrics; ::TestInitReverseProxyMetricsConflict. modules/caddyhttp/reverseproxy/detached_test.go::TestStreamAccountedOnce (cleanup result, both directions ending, repeated finish: counted once); ::TestStreamTimeout (timeout result); ::TestAttachedStreamClosedOnCleanup (cleanup result, active gauge back to 0); ::TestDetachedStreamSurvivesReload (upstream_removed result). modules/caddyhttp/reverseproxy/streaming_test.go::TestSwitchProtocolCopierCountsBytes and ::TestCloseConnectionsCallsOnClose."
+    },
+    {
+      "criterion": "ACC10",
+      "note": "Doc comments on Handler.StreamDetached, Handler.StreamLogs and the StreamLogs fields in reverseproxy.go and detached.go, plus the Caddyfile syntax block and explanatory paragraph in caddyfile.go."
+    },
+    {
+      "criterion": "ACC11",
+      "note": "caddytest/integration/stream_reload_test.go (TestStreamDetachedReload, TestStreamDefaultClosedOnReload, TestStreamCloseDelayReload, TestStreamDetachedAccessLog, TestStreamThroughEncode); stream_test.go::TestH2ExtendedConnectWebSocket; intercept_test.go::TestInterceptUpgrade."
+    },
+    {
+      "criterion": "ACC12",
+      "note": "Registry: detached_test.go::TestDetachedRegistry. Config parsing: caddyfile_test.go. Metrics: metrics_test.go. Recorder hijack: responsewriter_test.go. Encode post-hijack: encode_test.go::TestResponseWriterHijackStopsWrites and ::TestResponseWriterHijackNotSupported. Intercept post-hijack: only covered by the integration test TestInterceptUpgrade, since there is no intercept unit test file in scope."
+    }
+  ],
+  "replan_request": null,
+  "summary": "No code change was needed for this fix-up. The reviewer objected that the ACC9 note named a file instead of test names, so I re-cite ACC9 below with the specific test functions and the file path for each. All of them passed in the last run (unit tests under `-race`; the integration package both plain and under `-race`)."
+}

@@ -1,0 +1,326 @@
+{
+  "criteria": [
+    {
+      "intent": "INTENT1",
+      "key": "C1",
+      "kind": "behavior",
+      "text": "With stream_detached, an established Upgrade stream keeps passing data after a config reload; when the reload removes its upstream that stream is closed while streams to retained upstreams stay open."
+    },
+    {
+      "intent": "INTENT1",
+      "key": "C2",
+      "kind": "behavior",
+      "text": "Caddyfile and JSON stream_detached both set Handler.StreamDetached and survive Caddyfile-to-JSON adaptation."
+    },
+    {
+      "intent": "INTENT2",
+      "key": "C3",
+      "kind": "behavior",
+      "text": "Without stream_detached an upgraded stream is closed on reload; with stream_close_delay it stays open until the delay elapses, then closes."
+    },
+    {
+      "intent": "INTENT3",
+      "key": "C4",
+      "kind": "behavior",
+      "text": "stream_logs with skip_handshake, level and logger_name parse from Caddyfile and JSON; defaults are handshake logged and level DEBUG; skip_handshake suppresses the access log entry for the upgrade request."
+    },
+    {
+      "intent": "INTENT3",
+      "key": "C5",
+      "kind": "behavior",
+      "text": "With logger_name access, a stream close log entry appears in the access log at the configured level, including duration and byte counts."
+    },
+    {
+      "intent": "INTENT4",
+      "key": "C6",
+      "kind": "behavior",
+      "text": "WebSocket upgrades through encode and through intercept with handle_response work end to end; the client receives exactly one 101 and no writes happen to the response after hijack."
+    },
+    {
+      "intent": "INTENT4",
+      "key": "C7",
+      "kind": "behavior",
+      "text": "The proxy copies stream bytes on the raw hijacked connection, so the recorder size is not inflated by stream bytes."
+    },
+    {
+      "intent": "INTENT5",
+      "key": "C8",
+      "kind": "behavior",
+      "text": "HTTP/2 extended CONNECT WebSocket through reverse_proxy transfers data, and an HTTP/1.1 upgrade works in detached mode."
+    },
+    {
+      "intent": "INTENT6",
+      "key": "C9",
+      "kind": "behavior",
+      "text": "Active-streams, closed-by-result, duration and bytes-to/from-backend metrics are updated, and each stream is counted exactly once even when both directions end, time out or are closed by cleanup."
+    },
+    {
+      "intent": "INTENT7",
+      "key": "C10",
+      "kind": "other",
+      "text": "Doc comments on the Handler JSON fields and the Caddyfile syntax block describe stream_detached, stream_logs, skip_handshake and the log level."
+    },
+    {
+      "intent": "INTENT8",
+      "key": "C11",
+      "kind": "behavior",
+      "text": "Integration tests with a real server and clients cover reload survive/close in both modes, h2 extended CONNECT, upgrades via encode and intercept, and detached streams with access logging."
+    },
+    {
+      "intent": "INTENT9",
+      "key": "C12",
+      "kind": "behavior",
+      "text": "Unit tests cover the registry, config parsing, metrics, recorder hijack behaviour, and encode and intercept post-hijack behaviour; existing suites stay green."
+    }
+  ],
+  "intents": [
+    {
+      "evidence": [
+        {
+          "end": 461,
+          "path": "modules/caddyhttp/reverseproxy/reverseproxy.go",
+          "quote": "err := h.cleanupConnections()",
+          "start": 460
+        }
+      ],
+      "intent": "INTENT1",
+      "rationale": "No detached mode exists; connections are tracked per Handler and closed in Cleanup. Need a process-wide registry keyed by upstream so detached streams outlive the handler and are closed only when their upstream disappears.",
+      "resolution": "change"
+    },
+    {
+      "evidence": [
+        {
+          "end": 466,
+          "path": "modules/caddyhttp/reverseproxy/streaming.go",
+          "quote": "if h.StreamCloseDelay == 0 {",
+          "start": 463
+        }
+      ],
+      "intent": "INTENT2",
+      "rationale": "Default behaviour must be preserved while refactoring; existing cleanupConnections/StreamCloseDelay logic stays for non-detached streams and needs a regression test.",
+      "resolution": "change"
+    },
+    {
+      "evidence": [
+        {
+          "end": 1233,
+          "path": "modules/caddyhttp/server.go",
+          "quote": "GetVar(ctx, LogSkipVar).(bool)",
+          "start": 1233
+        }
+      ],
+      "intent": "INTENT3",
+      "rationale": "No stream_logs config exists. Add StreamLogs (skip_handshake, level, logger_name) to Handler and Caddyfile; skip_handshake sets the existing log_skip var; close logs go to the access logger when logger_name is access.",
+      "resolution": "change"
+    },
+    {
+      "evidence": [
+        {
+          "end": 262,
+          "path": "modules/caddyhttp/responsewriter.go",
+          "quote": "conn = &hijackedConn{conn, rr}",
+          "start": 262
+        }
+      ],
+      "intent": "INTENT4",
+      "rationale": "responseRecorder.Hijack wraps the conn in hijackedConn counting bytes via the recorder, and encode/intercept may write after hijack. Proxy must use the raw conn, 101 must be final, wrappers must no-op after hijack.",
+      "resolution": "change"
+    },
+    {
+      "evidence": [
+        {
+          "end": 99,
+          "path": "modules/caddyhttp/reverseproxy/streaming.go",
+          "quote": "extended_connect_websocket_body",
+          "start": 99
+        }
+      ],
+      "intent": "INTENT5",
+      "rationale": "Extended CONNECT path (h2ReadWriteCloser) must keep working and join the new stream lifecycle; HTTP/1.1 detached must work. Needs tests.",
+      "resolution": "change"
+    },
+    {
+      "evidence": [
+        {
+          "end": 20,
+          "path": "modules/caddyhttp/reverseproxy/metrics.go",
+          "quote": "var reverseProxyMetrics = struct {",
+          "start": 16
+        }
+      ],
+      "intent": "INTENT6",
+      "rationale": "Only upstreams_healthy exists; add active streams gauge, closed counter by result, duration histogram, and bytes counters per direction, recorded once per stream.",
+      "resolution": "change"
+    },
+    {
+      "evidence": [
+        {
+          "end": 101,
+          "path": "modules/caddyhttp/reverseproxy/caddyfile.go",
+          "quote": "stream_close_delay <duration>",
+          "start": 101
+        }
+      ],
+      "intent": "INTENT7",
+      "rationale": "Document new options in the Caddyfile syntax comment and JSON field comments.",
+      "resolution": "change"
+    },
+    {
+      "evidence": [
+        {
+          "end": 23,
+          "path": "caddytest/integration/stream_test.go",
+          "quote": "func TestH2ToH2CStream",
+          "start": 23
+        }
+      ],
+      "intent": "INTENT8",
+      "rationale": "Add real-server integration tests; stream_test.go covers only h2 to h2c streaming.",
+      "resolution": "change"
+    },
+    {
+      "evidence": [
+        {
+          "end": 19,
+          "path": "modules/caddyhttp/reverseproxy/streaming_test.go",
+          "quote": "package reverseproxy",
+          "start": 19
+        }
+      ],
+      "intent": "INTENT9",
+      "rationale": "Add unit tests for registry, parsing, metrics, recorder, encode and intercept changes.",
+      "resolution": "change"
+    }
+  ],
+  "summary": "One PR: add a process-wide detached-stream registry keyed by upstream, stream_detached and stream_logs options, hijack-safe recorder/encode/intercept, stream metrics, docs, and unit plus integration tests. Docs live in Go doc comments (generated docs), no separate doc files.",
+  "tasks": [
+    {
+      "criteria": [
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "C5",
+        "C6",
+        "C7",
+        "C8",
+        "C9",
+        "C10",
+        "C11",
+        "C12"
+      ],
+      "depends_on": [],
+      "files": [
+        {
+          "action": "modify",
+          "path": "modules/caddyhttp/reverseproxy/streaming.go",
+          "role": "production"
+        },
+        {
+          "action": "modify",
+          "path": "modules/caddyhttp/reverseproxy/reverseproxy.go",
+          "role": "production"
+        },
+        {
+          "action": "modify",
+          "path": "modules/caddyhttp/reverseproxy/caddyfile.go",
+          "role": "production"
+        },
+        {
+          "action": "modify",
+          "path": "modules/caddyhttp/reverseproxy/metrics.go",
+          "role": "production"
+        },
+        {
+          "action": "create",
+          "path": "modules/caddyhttp/reverseproxy/detached.go",
+          "role": "production"
+        },
+        {
+          "action": "modify",
+          "path": "modules/caddyhttp/responsewriter.go",
+          "role": "production"
+        },
+        {
+          "action": "modify",
+          "path": "modules/caddyhttp/encode/encode.go",
+          "role": "production"
+        },
+        {
+          "action": "modify",
+          "path": "modules/caddyhttp/intercept/intercept.go",
+          "role": "production"
+        },
+        {
+          "action": "modify",
+          "path": "modules/caddyhttp/server.go",
+          "role": "production"
+        },
+        {
+          "action": "modify",
+          "path": "modules/caddyhttp/reverseproxy/streaming_test.go",
+          "role": "test"
+        },
+        {
+          "action": "create",
+          "path": "modules/caddyhttp/reverseproxy/detached_test.go",
+          "role": "test"
+        },
+        {
+          "action": "create",
+          "path": "modules/caddyhttp/reverseproxy/caddyfile_test.go",
+          "role": "test"
+        },
+        {
+          "action": "create",
+          "path": "modules/caddyhttp/reverseproxy/metrics_test.go",
+          "role": "test"
+        },
+        {
+          "action": "modify",
+          "path": "modules/caddyhttp/responsewriter_test.go",
+          "role": "test"
+        },
+        {
+          "action": "modify",
+          "path": "modules/caddyhttp/encode/encode_test.go",
+          "role": "test"
+        },
+        {
+          "action": "modify",
+          "path": "caddytest/integration/stream_test.go",
+          "role": "test"
+        },
+        {
+          "action": "create",
+          "path": "caddytest/integration/stream_reload_test.go",
+          "role": "test"
+        },
+        {
+          "action": "modify",
+          "path": "caddytest/integration/intercept_test.go",
+          "role": "test"
+        },
+        {
+          "action": "create",
+          "path": "caddytest/integration/caddyfile_adapt/reverse_proxy_stream_detached.caddyfiletest",
+          "role": "test"
+        }
+      ],
+      "key": "T1",
+      "summary": "Order: (1) hijack safety in caddyhttp recorder, encode and intercept; (2) new stream registry (detached.go) plus StreamDetached/StreamLogs fields, Provision/Cleanup and handleUpgradeResponse using raw conn; (3) metrics; (4) Caddyfile parsing and docs; (5) unit tests then integration tests. Default non-detached path keeps closeConnections/StreamCloseDelay unchanged.",
+      "tests": [
+        "modules/caddyhttp/reverseproxy/streaming_test.go",
+        "modules/caddyhttp/reverseproxy/detached_test.go",
+        "modules/caddyhttp/reverseproxy/caddyfile_test.go",
+        "modules/caddyhttp/reverseproxy/metrics_test.go",
+        "modules/caddyhttp/responsewriter_test.go",
+        "modules/caddyhttp/encode/encode_test.go",
+        "caddytest/integration/stream_test.go",
+        "caddytest/integration/stream_reload_test.go",
+        "caddytest/integration/intercept_test.go",
+        "caddytest/integration/caddyfile_adapt/reverse_proxy_stream_detached.caddyfiletest"
+      ]
+    }
+  ]
+}

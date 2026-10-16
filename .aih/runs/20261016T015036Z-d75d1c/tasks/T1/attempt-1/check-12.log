@@ -1,0 +1,6 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261016T015027Z/worktrees/20261016T015036Z-d75d1c golang:1.27-bookworm go test -count=1 -timeout 30m -run=TestH2ExtendedConnectWebSocket ./caddytest/integration
+FAIL	github.com/caddyserver/caddy/v2/caddytest/integration [build failed]
+FAIL
+# github.com/caddyserver/caddy/v2/caddytest/integration [github.com/caddyserver/caddy/v2/caddytest/integration.test]
+caddytest/integration/stream_test.go:2:1: invalid //go:debug: unknown //go:debug setting "http2xconnect"
+

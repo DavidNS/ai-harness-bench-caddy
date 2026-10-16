@@ -1,0 +1,7 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261016T015027Z/worktrees/20261016T015036Z-d75d1c-red golang:1.27-bookworm go test -count=1 -timeout 30m ./modules/caddyhttp/encode
+FAIL	github.com/caddyserver/caddy/v2/modules/caddyhttp/encode [build failed]
+FAIL
+# github.com/caddyserver/caddy/v2/modules/caddyhttp/encode [github.com/caddyserver/caddy/v2/modules/caddyhttp/encode.test]
+modules/caddyhttp/encode/encode_test.go:453:21: rw.Hijack undefined (type *responseWriter has no field or method Hijack)
+modules/caddyhttp/encode/encode_test.go:484:21: rw.Hijack undefined (type *responseWriter has no field or method Hijack)
+
