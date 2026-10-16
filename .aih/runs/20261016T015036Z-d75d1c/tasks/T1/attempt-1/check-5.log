@@ -1,0 +1,12 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=1 -w /targets/.aih/20261016T015027Z/worktrees/20261016T015036Z-d75d1c golang:1.27-bookworm go test -count=1 -timeout 30m -race ./caddytest/integration ./modules/caddyhttp/reverseproxy
+ok  	github.com/caddyserver/caddy/v2/caddytest/integration	12.861s
+--- FAIL: TestDetachedStreamSurvivesReload (0.00s)
+    detached_test.go:397: detached streams of the upstream = 0, want 1
+{"level":"error","ts":1792116374.3363621,"msg":"can't switch protocols using non-Hijacker ResponseWriter","type":"*httptest.ResponseRecorder"}
+{"level":"error","ts":1792116374.3366811,"msg":"can't switch protocols using non-Hijacker ResponseWriter","type":"*httptest.ResponseRecorder"}
+{"level":"warn","ts":1792116374.3416593,"msg":"The 'tls_trusted_ca_certs' field is deprecated. Use the 'tls_trust_pool' field instead."}
+{"level":"warn","ts":1792116374.3427546,"msg":"The 'tls_trusted_ca_certs' field is deprecated. Use the 'tls_trust_pool' field instead."}
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy	1.515s
+FAIL
+

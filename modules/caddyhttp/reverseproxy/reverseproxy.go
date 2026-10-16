@@ -199,6 +199,27 @@ type Handler struct {
 	// by the previous config closing. Default: no delay.
 	StreamCloseDelay caddy.Duration `json:"stream_close_delay,omitempty"`
 
+	// If true, upgraded streams (WebSockets and other protocol upgrades
+	// hijacked from HTTP/1.1 connections) are detached from the config
+	// that started them: a config reload does not close them, and they
+	// no longer keep the old config alive. Only the streams whose
+	// upstream is not part of the new config anymore are closed when the
+	// config is reloaded. stream_close_delay does not apply to detached
+	// streams. HTTP/2 and HTTP/3 extended CONNECT streams live as long
+	// as their request handler, so they cannot be detached and are
+	// closed on reload as without this option.
+	// Default: upgraded streams are closed when the config is unloaded,
+	// after stream_close_delay if set.
+	StreamDetached bool `json:"stream_detached,omitempty"`
+
+	// Configures the logging of upgraded streams: whether the upgrade
+	// handshake is written to the access log (it is by default), and the
+	// level and logger of the entry written when a stream is closed.
+	// By default, stream close entries are written at DEBUG level to the
+	// logger of this handler; set the logger name to "access" to have them
+	// in the access log.
+	StreamLogs *StreamLogs `json:"stream_logs,omitempty"`
+
 	// If configured, rewrites the copy of the upstream request.
 	// Allows changing the request method and URI (path and query).
 	// Since the rewrite is applied to the copy, it does not persist
@@ -287,6 +308,9 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	h.logger = ctx.Logger()
 	h.connections = make(map[io.ReadWriteCloser]openConnection)
 	h.connectionsMu = new(sync.Mutex)
+	if err := h.provisionStreamLogs(); err != nil {
+		return err
+	}
 
 	// warn about unsafe buffering config
 	if h.RequestBuffers == -1 || h.ResponseBuffers == -1 {
@@ -460,9 +484,17 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 func (h *Handler) Cleanup() error {
 	err := h.cleanupConnections()
 
-	// remove hosts from our config from the pool
+	// remove hosts from our config from the pool; a host that no config
+	// uses anymore has its detached streams closed, the others are kept
 	for _, upstream := range h.Upstreams {
-		_, _ = hosts.Delete(upstream.String())
+		deleted, _ := hosts.Delete(upstream.String())
+		if deleted {
+			if n, closeErr := detachedStreams.closeUpstream(upstream.String()); n > 0 {
+				if c := h.logger.Check(zapcore.DebugLevel, "closed detached streams of removed upstream"); c != nil {
+					c.Write(zap.String("upstream", upstream.String()), zap.Int("streams", n), zap.Error(closeErr))
+				}
+			}
+		}
 	}
 
 	return err

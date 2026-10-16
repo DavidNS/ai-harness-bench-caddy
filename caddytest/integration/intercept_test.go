@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/caddyserver/caddy/v2/caddytest"
@@ -37,6 +38,45 @@ func TestIntercept(t *testing.T) {
 	}
 
 	tester.AssertGetResponse("http://localhost:9080/no-intercept", 200, "I'm not a teapot")
+}
+
+// An upgrade works through an intercept handler that would take any response
+// (handle_response without a matcher): the 101 is final, it is neither buffered
+// nor replaced, and nothing is written to the response once the connection is
+// hijacked.
+func TestInterceptUpgrade(t *testing.T) {
+	startUpgradeBackend(t, streamBackendA)
+
+	tester := caddytest.NewTester(t)
+	tester.InitServer(fmt.Sprintf(`{
+		skip_install_trust
+		admin localhost:2999
+		http_port     9080
+		https_port    9443
+		grace_period  1ns
+	}
+
+	localhost:9080 {
+		route {
+			intercept {
+				handle_response {
+					respond "intercepted" 200
+				}
+			}
+			respond /plain "plain body" 404
+			reverse_proxy %s
+		}
+	}
+	`, streamBackendA), "caddyfile")
+
+	// other responses are intercepted
+	tester.AssertGetResponse("http://localhost:9080/plain", 200, "intercepted")
+
+	for _, proto := range []string{"tunnel", "websocket"} {
+		tn := openTunnel(t, "/ws", proto)
+		tn.echo("through intercept")
+		tn.echo("and again")
+	}
 }
 
 func TestInterceptReplaceStatusWithMatcher(t *testing.T) {
