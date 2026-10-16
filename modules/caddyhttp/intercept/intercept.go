@@ -15,9 +15,11 @@
 package intercept
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -104,11 +106,26 @@ type interceptedResponseHandler struct {
 	handler      caddyhttp.ResponseHandler
 	handlerIndex int
 	statusCode   int
+	hijacked     bool
 }
 
 // EXPERIMENTAL: Subject to change or removal.
-func (irh interceptedResponseHandler) Unwrap() http.ResponseWriter {
+func (irh *interceptedResponseHandler) Unwrap() http.ResponseWriter {
 	return irh.ResponseRecorder
+}
+
+// Hijack hijacks the underlying connection. Once it succeeded the
+// response is over and nothing may be written to it anymore.
+//
+// EXPERIMENTAL: Subject to change or removal.
+func (irh *interceptedResponseHandler) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	//nolint:bodyclose
+	conn, brw, err := http.NewResponseController(irh.ResponseRecorder).Hijack()
+	if err != nil {
+		return nil, nil, err
+	}
+	irh.hijacked = true
+	return conn, brw, nil
 }
 
 // EXPERIMENTAL: Subject to change or removal.
@@ -118,7 +135,7 @@ func (ir Intercept) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddy
 	defer bufPool.Put(buf)
 
 	repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-	rec := interceptedResponseHandler{replacer: repl}
+	rec := &interceptedResponseHandler{replacer: repl}
 	rec.ResponseRecorder = caddyhttp.NewResponseRecorder(w, buf, func(status int, header http.Header) bool {
 		// see if any response handler is configured for this original response
 		for i, rh := range ir.HandleResponse {
@@ -150,7 +167,9 @@ func (ir Intercept) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddy
 	if err := next.ServeHTTP(rec, r); err != nil {
 		return err
 	}
-	if !rec.Buffered() {
+	// a hijacked connection (e.g. an upgrade) or a streamed response is
+	// final, there is nothing to intercept or write anymore
+	if rec.hijacked || !rec.Buffered() {
 		return nil
 	}
 

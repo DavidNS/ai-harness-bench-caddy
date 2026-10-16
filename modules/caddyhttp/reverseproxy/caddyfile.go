@@ -99,7 +99,21 @@ func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 //	    stream_buffer_size <size>
 //	    stream_timeout     <duration>
 //	    stream_close_delay <duration>
+//	    stream_detached
+//	    stream_logs {
+//	        skip_handshake
+//	        level <level>
+//	    }
 //	    verbose_logs
+//
+// With stream_detached, upgraded streams (e.g. WebSockets) survive config
+// reloads, and a reload only closes the streams whose upstream was removed
+// from the config; by default, they are closed on reload, after
+// stream_close_delay if set. In stream_logs, skip_handshake omits the
+// request that performs the upgrade handshake from the access log (it is
+// logged by default), and level (debug, info, warn or error; default debug)
+// sets the level of the entry written to the access loggers, selectable with
+// the log directive's logger_name, when a stream closes.
 //
 //	    # reporting
 //	    proxy_status_name <name>
@@ -713,6 +727,39 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 					return d.Errf("bad duration value '%s': %v", d.Val(), err)
 				}
 				h.StreamCloseDelay = caddy.Duration(dur)
+			}
+
+		case "stream_detached":
+			if d.NextArg() {
+				return d.ArgErr()
+			}
+			h.StreamDetached = true
+
+		case "stream_logs":
+			if d.NextArg() {
+				return d.ArgErr()
+			}
+			if h.StreamLogs == nil {
+				h.StreamLogs = new(StreamLogs)
+			}
+			for nesting := d.Nesting(); d.NextBlock(nesting); {
+				switch d.Val() {
+				case "skip_handshake":
+					if d.NextArg() {
+						return d.ArgErr()
+					}
+					h.StreamLogs.SkipHandshake = true
+				case "level":
+					if !d.NextArg() {
+						return d.ArgErr()
+					}
+					h.StreamLogs.Level = d.Val()
+					if d.NextArg() {
+						return d.ArgErr()
+					}
+				default:
+					return d.Errf("unrecognized stream_logs subdirective: %s", d.Val())
+				}
 			}
 
 		case "trusted_proxies":

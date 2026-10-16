@@ -28,6 +28,7 @@ import (
 	"mime"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -83,6 +84,10 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 	if !ok {
 		logger.Error("internal error: 101 switching protocols response with non-writable body")
 		return
+	}
+
+	if h.StreamLogs != nil && h.StreamLogs.SkipHandshake {
+		caddyhttp.SetVar(req.Context(), caddyhttp.LogSkipVar, true)
 	}
 
 	// write header first, response headers should not be counted in size
@@ -154,20 +159,48 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 		}
 		backConn.Close()
 	}()
-	defer close(backConnCloseCh)
 
+	// From here on the stream is open and accounted for. The deferred
+	// function below is the only place where it is accounted as closed, so
+	// each stream is counted exactly once whichever way it ends.
 	start := time.Now()
+	stream := &upgradedStream{upstream: streamUpstream(req)}
+	spc := &switchProtocolCopier{
+		user:       conn,
+		backend:    backConn,
+		wg:         wg,
+		bufferSize: h.StreamBufferSize,
+	}
+	result := streamResultCompleted
+	streamStarted()
 	defer func() {
+		close(backConnCloseCh)
 		conn.Close()
-		if c := logger.Check(zapcore.DebugLevel, "connection closed"); c != nil {
-			c.Write(zap.Duration("duration", time.Since(start)))
+		backConn.Close()
+		// let the copiers end so that the byte counts are final
+		wg.Wait()
+
+		duration := time.Since(start)
+		switch {
+		case stream.closedByCleanup.Load():
+			result = streamResultReload
+		case result == streamResultError && req.Context().Err() != nil:
+			result = streamResultCanceled
 		}
+		toBackend, fromBackend := spc.bytesToBackend.Load(), spc.bytesFromBackend.Load()
+		streamFinished(result, duration, toBackend, fromBackend)
+
+		if c := logger.Check(zapcore.DebugLevel, "connection closed"); c != nil {
+			c.Write(zap.Duration("duration", duration))
+		}
+		h.logStreamClosed(req, stream, result, duration, toBackend, fromBackend)
 	}()
 
 	if err := brw.Flush(); err != nil {
 		if c := logger.Check(zapcore.DebugLevel, "response flush"); c != nil {
 			c.Write(zap.Error(err))
 		}
+		result = streamResultError
 		return
 	}
 
@@ -175,11 +208,13 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 	// see: https://github.com/caddyserver/caddy/issues/6273
 	if buffered := brw.Reader.Buffered(); buffered > 0 {
 		data, _ := brw.Peek(buffered)
-		_, err := backConn.Write(data)
+		n, err := backConn.Write(data)
+		spc.bytesToBackend.Add(int64(n))
 		if err != nil {
 			if c := logger.Check(zapcore.DebugLevel, "backConn write failed"); c != nil {
 				c.Write(zap.Error(err))
 			}
+			result = streamResultError
 			return
 		}
 	}
@@ -199,16 +234,21 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 		}
 		return nil
 	}
-	deleteFrontConn := h.registerConnection(conn, gracefulClose(conn, false))
-	deleteBackConn := h.registerConnection(backConn, gracefulClose(backConn, true))
-	defer deleteFrontConn()
-	defer deleteBackConn()
-
-	spc := switchProtocolCopier{
-		user:       conn,
-		backend:    backConn,
-		wg:         wg,
-		bufferSize: h.StreamBufferSize,
+	// closing either connection from the cleanup of a config marks the stream
+	frontOpen := openConnection{&cleanupConn{conn, stream}, gracefulClose(conn, false)}
+	backOpen := openConnection{&cleanupConn{backConn, stream}, gracefulClose(backConn, true)}
+	if h.StreamDetached {
+		// detached streams belong to their upstream rather than to this handler
+		removeStream := detachedStreams.add(&detachedStream{
+			upstream: stream.upstream,
+			conns:    []openConnection{frontOpen, backOpen},
+		})
+		defer removeStream()
+	} else {
+		deleteFrontConn := h.registerConnection(frontOpen.conn, frontOpen.gracefulClose)
+		deleteBackConn := h.registerConnection(backOpen.conn, backOpen.gracefulClose)
+		defer deleteFrontConn()
+		defer deleteBackConn()
 	}
 
 	// setup the timeout if requested
@@ -255,12 +295,18 @@ func (h *Handler) handleUpgradeResponse(logger *zap.Logger, wg *sync.WaitGroup, 
 				if c := logger.Check(zapcore.DebugLevel, "streaming error"); c != nil {
 					c.Write(zap.Error(err))
 				}
+				// a direction that ended cleanly on a connection without a
+				// write half to close is a normal end of the stream
+				if !errors.Is(err, errCopyDone) {
+					result = streamResultError
+				}
 				return
 			}
 		case time := <-timeoutc:
 			if c := logger.Check(zapcore.DebugLevel, "stream timed out"); c != nil {
 				c.Write(zap.Time("timeout", time))
 			}
+			result = streamResultTimeout
 			return
 		}
 	}
@@ -440,17 +486,10 @@ func (h *Handler) closeConnections() error {
 	defer h.connectionsMu.Unlock()
 
 	for _, oc := range h.connections {
-		if oc.gracefulClose != nil {
-			// this is potentially blocking while we have the lock on the connections
-			// map, but that should be OK since the server has in theory shut down
-			// and we are no longer using the connections map
-			gracefulErr := oc.gracefulClose()
-			if gracefulErr != nil && err == nil {
-				err = gracefulErr
-			}
-		}
-		closeErr := oc.conn.Close()
-		if closeErr != nil && err == nil {
+		// this is potentially blocking while we have the lock on the connections
+		// map, but that should be OK since the server has in theory shut down
+		// and we are no longer using the connections map
+		if closeErr := closeOpenConnection(oc); closeErr != nil && err == nil {
 			err = closeErr
 		}
 	}
@@ -461,6 +500,12 @@ func (h *Handler) closeConnections() error {
 // Depending on the value of StreamCloseDelay it does that either immediately
 // or sets up a timer that will do that later.
 func (h *Handler) cleanupConnections() error {
+	// detached streams are not tied to this handler: they are tracked by
+	// upstream and closed by the cleanup of the last handler using it
+	if h.StreamDetached {
+		return nil
+	}
+
 	if h.StreamCloseDelay == 0 {
 		return h.closeConnections()
 	}
@@ -676,6 +721,9 @@ type switchProtocolCopier struct {
 	user, backend io.ReadWriteCloser
 	wg            *sync.WaitGroup
 	bufferSize    int
+
+	// bytes copied in each direction, as seen from the backend
+	bytesToBackend, bytesFromBackend atomic.Int64
 }
 
 // errCopyDone is reported by a direction that ended at a clean EOF on a
@@ -683,9 +731,11 @@ type switchProtocolCopier struct {
 // could not be propagated to the peer.
 var errCopyDone = errors.New("hijacked connection copy complete")
 
-func (c switchProtocolCopier) copyFromBackend(errc chan<- error) {
+func (c *switchProtocolCopier) copyFromBackend(errc chan<- error) {
 	defer c.wg.Done()
-	if _, err := io.CopyBuffer(c.user, c.backend, c.buffer()); err != nil {
+	n, err := io.CopyBuffer(c.user, c.backend, c.buffer())
+	c.bytesFromBackend.Add(n)
+	if err != nil {
 		errc <- err
 		return
 	}
@@ -699,9 +749,11 @@ func (c switchProtocolCopier) copyFromBackend(errc chan<- error) {
 	errc <- errCopyDone
 }
 
-func (c switchProtocolCopier) copyToBackend(errc chan<- error) {
+func (c *switchProtocolCopier) copyToBackend(errc chan<- error) {
 	defer c.wg.Done()
-	if _, err := io.CopyBuffer(c.backend, c.user, c.buffer()); err != nil {
+	n, err := io.CopyBuffer(c.backend, c.user, c.buffer())
+	c.bytesToBackend.Add(n)
+	if err != nil {
 		errc <- err
 		return
 	}
@@ -715,7 +767,7 @@ func (c switchProtocolCopier) copyToBackend(errc chan<- error) {
 	errc <- errCopyDone
 }
 
-func (c switchProtocolCopier) buffer() []byte {
+func (c *switchProtocolCopier) buffer() []byte {
 	size := c.bufferSize
 	if size <= 0 {
 		size = defaultBufferSize

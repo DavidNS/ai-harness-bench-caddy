@@ -199,6 +199,21 @@ type Handler struct {
 	// by the previous config closing. Default: no delay.
 	StreamCloseDelay caddy.Duration `json:"stream_close_delay,omitempty"`
 
+	// If true, upgraded streams such as WebSockets are detached from the
+	// lifecycle of the config that created them: they survive config
+	// reloads, and a reload only closes the streams whose upstream is not
+	// part of the new config anymore. This lets a server that reloads
+	// often avoid holding on to many old configs. Streams to dynamic
+	// upstreams cannot be matched to the config and are never closed by
+	// a reload. By default, upgraded streams are closed when the config is
+	// unloaded, honoring stream_close_delay. Default: false.
+	StreamDetached bool `json:"stream_detached,omitempty"`
+
+	// Configures the logging of upgraded streams, such as whether the
+	// upgrade handshake is access-logged and at which level the entry
+	// written when a stream closes is emitted.
+	StreamLogs *StreamLogs `json:"stream_logs,omitempty"`
+
 	// If configured, rewrites the copy of the upstream request.
 	// Allows changing the request method and URI (path and query).
 	// Since the rewrite is applied to the copy, it does not persist
@@ -263,7 +278,10 @@ type Handler struct {
 	connectionsCloseTimer *time.Timer
 	connectionsMu         *sync.Mutex
 
-	ctx    caddy.Context
+	// the upstreams this handler registered as live in the stream registry
+	registeredUpstreams []string
+
+	ctx   caddy.Context
 	logger *zap.Logger
 	events *caddyevents.App
 }
@@ -278,6 +296,12 @@ func (Handler) CaddyModule() caddy.ModuleInfo {
 
 // Provision ensures that h is set up properly before use.
 func (h *Handler) Provision(ctx caddy.Context) error {
+	if h.StreamLogs != nil {
+		if _, err := parseStreamLogLevel(h.StreamLogs.Level); err != nil {
+			return err
+		}
+	}
+
 	eventAppIface, err := ctx.App("events")
 	if err != nil {
 		return fmt.Errorf("getting events app: %v", err)
@@ -453,12 +477,25 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 	upstreamHealthyUpdater := newMetricsUpstreamsHealthyUpdater(h, ctx)
 	upstreamHealthyUpdater.init()
 
+	// from here on, nothing can fail anymore, so Cleanup always
+	// releases exactly what was registered
+	h.registeredUpstreams = h.liveUpstreams()
+	detachedStreams.addLive(h.registeredUpstreams)
+
 	return nil
 }
 
 // Cleanup cleans up the resources made by h.
 func (h *Handler) Cleanup() error {
+	// by the time the old config is cleaned up, the new one is provisioned,
+	// so the upstreams it still uses are live and their streams are kept
+	orphaned := detachedStreams.removeLive(h.registeredUpstreams)
+	h.registeredUpstreams = nil
+
 	err := h.cleanupConnections()
+	if closeErr := closeDetachedStreams(orphaned); closeErr != nil && err == nil {
+		err = closeErr
+	}
 
 	// remove hosts from our config from the pool
 	for _, upstream := range h.Upstreams {

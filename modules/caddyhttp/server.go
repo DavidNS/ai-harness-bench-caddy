@@ -1211,6 +1211,18 @@ func (s *Server) shouldLogRequest(r *http.Request) bool {
 	return !s.Logs.SkipUnmappedHosts
 }
 
+// AccessLoggers returns the access loggers that a request like r is
+// logged to, honoring the server's per-host logger names and any
+// logger names set on the request. It returns nil if access logging
+// is disabled for r. The returned loggers stay usable after the
+// server's config has been unloaded.
+func (s *Server) AccessLoggers(r *http.Request) []*zap.Logger {
+	if !s.shouldLogRequest(r) {
+		return nil
+	}
+	return s.Logs.wrapLogger(s.accessLogger, r)
+}
+
 // logTrace will log that this middleware handler is being invoked.
 // It emits at DEBUG level.
 func (s *Server) logTrace(mh MiddlewareHandler) {
