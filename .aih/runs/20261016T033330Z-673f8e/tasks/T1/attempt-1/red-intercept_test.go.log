@@ -1,0 +1,11 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261016T033324Z/worktrees/20261016T033330Z-673f8e-red golang:1.27-bookworm go test -count=1 -timeout 30m ./modules/caddyhttp/intercept
+--- FAIL: TestInterceptUpgradeIsNotBufferedNorWrittenAfterHijack (0.00s)
+    intercept_test.go:80: Write() after hijack error = <nil>, want ErrHijacked
+    intercept_test.go:83: underlying statuses = [101 200], want [101]
+    intercept_test.go:86: underlying body = "late", want nothing
+--- FAIL: TestInterceptHijackWithoutStatusWritesNothing (0.00s)
+    intercept_test.go:107: wrote statuses [0], body "" after hijack; want nothing
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/modules/caddyhttp/intercept	0.019s
+FAIL
+

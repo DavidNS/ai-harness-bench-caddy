@@ -1,0 +1,54 @@
+{
+  "criteria_notes": [
+    {
+      "criterion": "ACC1",
+      "note": "TestDetachedStreamFollowsItsUpstream (integration, real server and client): the stream survives a reload that keeps the upstream and is closed by a reload that removes it. Unit: TestDetachedStreamsFollowTheirUpstream and TestStreamRegistryOrphans."
+    },
+    {
+      "criterion": "ACC2",
+      "note": "TestStreamOptionsCaddyfile and TestStreamOptionsJSON cover parsing and the false default. The adapt fixture reverse_proxy_stream_detached.caddyfiletest covers the Caddyfile to JSON mapping."
+    },
+    {
+      "criterion": "ACC3",
+      "note": "Integration: TestStreamIsClosedOnReload (closed immediately) and TestStreamIsClosedAfterCloseDelay (stays open, then closes after the delay). Unit: TestDefaultModeClosesStreamsOnCleanup and TestDefaultModeClosesStreamsAfterCloseDelay."
+    },
+    {
+      "criterion": "ACC4",
+      "note": "Parsing is in TestStreamOptionsCaddyfile and TestStreamOptionsJSON. TestUpgradedStreamSkipHandshakeLog checks the log_skip var. Integration TestStreamLogsSkipHandshake shows the handshake absent from the access log, and TestDetachedStreamCloseLogAfterReload shows it logged by default."
+    },
+    {
+      "criterion": "ACC5",
+      "note": "TestDetachedStreamCloseLogAfterReload: a stream opened before a detached reload writes `stream closed` at debug to logger http.log.access.access (logger_name access). TestStreamLogsSkipHandshake checks the configured level (warn). Unit: TestStreamClosedLogLevel."
+    },
+    {
+      "criterion": "ACC6",
+      "note": "Recorder: TestResponseRecorderSwitchingProtocolsIsFinal, TestResponseRecorderNoWritesAfterHijack, TestResponseRecorderHijackWithoutStatusWritesNoStatus and TestResponseRecorderFailedHijackKeepsWriting. Encode: TestServeHTTPUpgradeNeverWritesAfterHijack, TestServeHTTPHijackWithoutStatusWritesNothing and TestServeHTTPHijackNotSupported. Intercept: TestInterceptUpgradeIsNotBufferedNorWrittenAfterHijack, TestInterceptHijackWithoutStatusWritesNothing and TestInterceptHijackNotSupported. The proxy copies on the raw hijacked connection."
+    },
+    {
+      "criterion": "ACC7",
+      "note": "Integration TestUpgradeThroughEncode (no Content-Encoding on the 101) and TestUpgradeThroughIntercept (matcher-less handle_response; ordinary responses are still intercepted). Both run with access logging enabled."
+    },
+    {
+      "criterion": "ACC8",
+      "note": "TestExtendedConnectWebsocketOverH2 relays data over an h2 extended CONNECT through reverse_proxy. HTTP/1.1 upgrades with stream_detached are covered by TestDetachedStreamFollowsItsUpstream and TestDetachedStreamCloseLogAfterReload."
+    },
+    {
+      "criterion": "ACC9",
+      "note": "metrics_test.go (TestStreamMetricsAccountEachStreamOnce) checks the counters, histogram and gauge. TestUpgradedStreamIsAccountedOnce checks one stream with exact byte counts. Timeout, canceled, flush-failure, buffered-write-failure and reload outcomes each have a test, and the active gauge returns to its starting value in each."
+    },
+    {
+      "criterion": "ACC10",
+      "note": "The Caddyfile syntax comment in caddyfile.go and the JSON field comments on StreamDetached and StreamLogs (streams.go and reverseproxy.go) document stream_detached, stream_logs, skip_handshake and the level (default debug)."
+    },
+    {
+      "criterion": "ACC11",
+      "note": "caddytest/integration/stream_reload_test.go covers reload survive/close in default, delay and detached modes. stream_upgrade_test.go covers extended CONNECT over h2, upgrades through encode and intercept, and detached streams with access logging."
+    },
+    {
+      "criterion": "ACC12",
+      "note": "Unit tests cover each changed unit: recorder and AccessLoggers (responsewriter_test.go), encode, intercept, registry/cleanup (streams_test.go and streaming_test.go), metrics (metrics_test.go), and Caddyfile/JSON parsing and level validation (stream_options_test.go)."
+    }
+  ],
+  "replan_request": null,
+  "summary": "I implemented opt-in `stream_detached`, the `stream_logs` block (`skip_handshake`, `level`), stream metrics, and the 101/hijack hardening in the recorder, `encode` and `intercept`. The listed unit tests pass under `-race` for caddyhttp, encode, intercept and reverseproxy. The full `./caddytest/integration` package, the existing tests and the new adapt fixture also pass (without `-race`). I did not run the base-commit check that the new tests fail without the change, and I did not run `golangci-lint` or `go mod tidy`.\n\n- **Writer chain:** a 101 is never buffered or passed to `shouldBuffer`, and header, body, flush and `WriteResponse` are no-ops after a successful hijack. `encode` and `intercept` got their own `Hijack`. `Server.AccessLoggers(r)` is the new accessor.\n- **Registry (`streams.go`):** a package-level registry keeps a live count per upstream dial. Provision adds the handler's dials and Cleanup removes them. Detached streams are tracked by upstream, and Cleanup closes only those whose upstream has no live handler left. Detached handlers skip `cleanupConnections`; the default path is unchanged.\n- **Streaming:** `handleUpgradeResponse` accounts each stream once in a single deferred finalizer. It records metrics and writes a `stream closed` entry to the access loggers, or to the handler logger if access logging is off. The result is one of completed, error, timeout, canceled or reload.\n- **Config and docs:** Caddyfile parsing and JSON fields are added. `level` is validated in Provision. Docs are in the Caddyfile syntax comment and the JSON field comments.\n\n**Limitations:**\n- **Dynamic upstreams:** dynamic-upstream streams cannot be matched to a config, so a detached one is never closed by a reload (stated in the field comment).\n- **No tests for:**\n  - A reload where the old config's access-log writer is closed.\n  - A detached HTTP/2 stream across a reload (only the h1 detached case is covered).\n- **Extended CONNECT test:** the server only advertises RFC 8441 when `GODEBUG=http2xconnect=1`. The test re-runs itself in a child process with that set, using admin port 2998 and ports 9543/9580, and it uses a raw HTTP/2 framer client because the standard client rejects `:protocol`.\n- **Intercept test:** the replacement body in `TestUpgradeThroughIntercept` is `swapped` (7 characters, same as `backend`). A longer body fails with \"wrote more than the declared Content-Length\" because the intercepted response keeps the backend's Content-Length. I did not change that behaviour."
+}

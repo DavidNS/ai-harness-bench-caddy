@@ -1,0 +1,6 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=1 -w /targets/.aih/20261016T033324Z/worktrees/20261016T033330Z-673f8e golang:1.27-bookworm go test -count=1 -timeout 30m -race ./modules/caddyhttp ./modules/caddyhttp/encode ./modules/caddyhttp/intercept ./modules/caddyhttp/reverseproxy
+ok  	github.com/caddyserver/caddy/v2/modules/caddyhttp	8.333s
+ok  	github.com/caddyserver/caddy/v2/modules/caddyhttp/encode	1.921s
+ok  	github.com/caddyserver/caddy/v2/modules/caddyhttp/intercept	1.066s
+ok  	github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy	2.428s
+

@@ -1,0 +1,13 @@
++ docker run --rm --init -v C:/Users/david/git/ai-harness-e2e-benchmak/targets:/targets -v aih-bench-go-mod:/go/pkg/mod -v aih-bench-go-build:/root/.cache/go-build -v aih-bench-state:/root/.local/share -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0 -w /targets/.aih/20261016T033324Z/worktrees/20261016T033330Z-673f8e-red golang:1.27-bookworm go test -count=1 -timeout 30m ./modules/caddyhttp/encode
+--- FAIL: TestServeHTTPUpgradeNeverWritesAfterHijack (0.00s)
+    encode_test.go:477: Write() after hijack error = <nil>, want ErrHijacked
+    encode_test.go:480: ReadFrom() after hijack error = <nil>, want ErrHijacked
+    encode_test.go:483: Flush() after hijack error = feature not supported
+    encode_test.go:486: underlying statuses = [101 500], want [101]
+    encode_test.go:492: Content-Encoding = "gzip", want none for an upgrade
+--- FAIL: TestServeHTTPHijackWithoutStatusWritesNothing (0.00s)
+    encode_test.go:517: underlying statuses = [200], want none after hijack
+FAIL
+FAIL	github.com/caddyserver/caddy/v2/modules/caddyhttp/encode	0.353s
+FAIL
+
